@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PakJer - ระบบคลังเพลงและเพลย์ลิสต์คอร์ดเพลงสุดพรีเมียม</title>
+  <link rel="stylesheet" href="index.css">
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  
+  <div class="app-container">
+    
+    <!-- 1. APP HEADER -->
+    <header class="app-header">
+      <div class="logo-container">
+        <div class="logo-icon">⚡</div>
+        <div class="logo-text">PakJer</div>
+      </div>
+      
+      <div class="header-controls">
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" class="search-input" placeholder="ค้นหาเพลง ศิลปิน แนวเพลง...">
+        </div>
+        
+        <button id="btn-import-crawler" class="btn btn-secondary" style="padding: 8px 16px;">
+          <span>🌐 ดึงคอร์ดเว็บอื่น</span>
+        </button>
+        
+        <button id="btn-admin-dashboard" class="btn" style="padding: 8px 16px;">
+          <span>➕ เพิ่มเพลงใหม่</span>
+        </button>
+      </div>
+    </header>
+    
+    <!-- 2. MAIN APP WORKSPACE SPLIT -->
+    <div class="app-workspace">
+      
+      <!-- SIDEBAR PANEL -->
+      <aside class="app-sidebar">
+        
+        <!-- Database Summary count -->
+        <div class="sidebar-section" style="background-color: rgba(255, 90, 31, 0.03);">
+          <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">คลังคอร์ดเพลงส่วนตัว</div>
+          <div id="total-songs-count" style="font-size: 20px; font-weight: 800; font-family: var(--font-display); color: var(--accent-color);">0 เพลง</div>
+        </div>
+
+        <!-- Playlists Manager Section -->
+        <div class="sidebar-section">
+          <div class="sidebar-title-row">
+            <span class="sidebar-title">ลิสต์เพลงของฉัน</span>
+            <button id="btn-add-playlist" class="sidebar-btn" title="สร้างลิสต์เพลงใหม่">➕</button>
+          </div>
+          <ul id="sidebar-playlist-list" class="playlist-list">
+            <!-- Dynamic playlist rows inject here -->
+          </ul>
+        </div>
+        
+      </aside>
+      
+      <!-- MAIN VIEWS PANEL -->
+      <main class="app-main-content">
+        
+        <!-- VIEW A: LIBRARY / SONGS GRID -->
+        <section id="view-library" class="view-panel">
+          <div class="library-header">
+            <div class="library-title-group">
+              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <h1 id="library-title-text">คลังเพลงของฉัน</h1>
+                <div id="playlist-actions-container" class="hidden" style="display: flex; gap: 6px;">
+                  <button id="btn-edit-playlist-name" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;">✏️ แก้ไขชื่อ</button>
+                  <button id="btn-delete-playlist" class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;">🗑️ ลบลิสต์</button>
+                </div>
+              </div>
+              <p id="library-subtitle-text">ค้นหาคอร์ด จัดลิสต์เพลง และแชร์เพลงร่วมกันได้อย่างอิสระ</p>
+            </div>
+          </div>
+          
+          <div id="song-grid" class="song-grid">
+            <!-- Dynamic song cards inject here -->
+          </div>
+        </section>
+        
+        <!-- VIEW B: SONG VIEWER & PERFORMANCE -->
+        <section id="view-song" class="view-panel hidden">
+          <div class="song-view-container">
+            
+            <!-- Song Hero Card (Screenshot 1 Layout style) -->
+            <div class="song-hero-card">
+              <div class="song-hero-top">
+                <div class="hero-title-row">
+                  <div>
+                    <h2 id="song-title" class="hero-title">Song Title</h2>
+                    <div class="hero-meta-row">
+                      <span id="song-artist" class="hero-artist">Artist Name</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Song Admin Tools inside hero -->
+                  <div style="display: flex; gap: 8px;">
+                    <button id="btn-song-edit" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">⚙️ แก้ไข</button>
+                    <button id="btn-song-add-playlist" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">📂 จัดลิสต์</button>
+                    <button id="btn-song-delete" class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;">🗑️ ลบเพลง</button>
+                  </div>
+                </div>
+                
+                <div class="hero-metrics">
+                  <span id="song-metric-tempo" class="metric-item">♩ = 94</span>
+                </div>
+              </div>
+              
+              <!-- Toolbar Grid Controls (Screenshot 1 / 3) -->
+              <div class="hero-controls-bar">
+                <!-- 1. Key Transposer Dropdown with +/- (Screenshot 1 / 3) -->
+                <div class="control-tab transpose-control-group" style="padding: 0; display: flex; align-items: stretch; border-right: 1px solid var(--border-color);">
+                  <button id="btn-key-dec" class="transpose-arrow-btn" title="ลดคีย์ (−)">−</button>
+                  <button id="btn-key-transpose" style="flex:1; border:none; border-left:1px solid var(--border-color); border-right:1px solid var(--border-color); background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; font-weight:500; height:100%; width:100%;">
+                    <span>🔑</span>
+                    <span class="transpose-display-val">G (Ori)</span>
+                  </button>
+                  <button id="btn-key-inc" class="transpose-arrow-btn" title="เพิ่มคีย์ (+)">+</button>
+                </div>
+                
+                <!-- 2. Autoscroller switch -->
+                <button id="btn-autoscroll" class="control-tab">
+                  <span>📜</span>
+                  <span class="btn-label">Autoscroll</span>
+                </button>
+                
+                <!-- 3. Dynamic Metronome beat tick sound -->
+                <button id="btn-metronome" class="control-tab">
+                  <span>🔊</span>
+                  <span class="btn-label">Metronome</span>
+                  <span class="metronome-visualizer">
+                    <span id="metronome-pulse" class="metronome-dot"></span>
+                  </span>
+                </button>
+                
+                <!-- 4. Tools and Sharing popup -->
+                <button id="btn-tools" class="control-tab">
+                  <span>🔗</span>
+                  <span>แชร์ / Tools</span>
+                  <span>▼</span>
+                </button>
+              </div>
+
+              <!-- Inline Autoscroll speed popup (Screenshot 2 style integration) -->
+              <div id="autoscroll-speed-control" class="scale-toolbar hidden">
+                <div class="autoscroll-bar">
+                  <span style="font-size: 13px; color: var(--text-secondary);">ความเร็วเลื่อนลง:</span>
+                  <input type="range" id="autoscroll-slider" class="speed-slider" min="5" max="80" value="20">
+                </div>
+              </div>
+            </div>
+
+            <!-- Toolbar Additional controls (Screenshot 2 style integration) -->
+            <div class="scale-toolbar" style="margin-top: 0;">
+              <div class="scale-label-box">
+                <span>ขนาดตัวอักษร:</span>
+                <div class="scale-selector">
+                  <button class="scale-btn" data-scale="0.65">60%</button>
+                  <button class="scale-btn active" data-scale="1.0">100%</button>
+                  <button class="scale-btn" data-scale="1.4">150%</button>
+                </div>
+              </div>
+              
+              <!-- Section jump selectors dropdown (Screenshot 5) -->
+              <div style="position: relative;">
+                <button id="btn-sections" class="section-select-btn">
+                  <span>🎼 ไปยังท่อน:</span>
+                  <span class="section-val" style="color: var(--accent-color); font-weight: 700;">Intro</span>
+                  <span>▼</span>
+                </button>
+                <div id="sections-menu-list" class="section-menu">
+                  <!-- Dynamic sections menu items inject here -->
+                </div>
+              </div>
+            </div>
+
+            <!-- THE RENDERED CHORD LYRIC CONTAINER -->
+            <div id="song-sheet-content" class="chord-sheet-container">
+              <!-- Brilliantly rendered stacked chord elements populate here -->
+            </div>
+
+            <!-- OPTIONAL SHEET PHOTO UPLOADS VIEW -->
+            <div id="song-image-container" class="song-image-attachment hidden">
+              <!-- Uploaded backing photo renders here -->
+            </div>
+            
+          </div>
+        </section>
+        
+        <!-- VIEW C: ADMIN DASHBOARD (SPLITSCREEN INTERACTIVE EDITOR) -->
+        <section id="view-admin" class="view-panel hidden">
+          <div class="admin-view-container">
+            <h2 style="font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--accent-color);">
+              แอดมิน: ห้องแต่งและแก้ไขคอร์ดเพลง
+            </h2>
+            
+            <div class="admin-grid-split">
+              
+              <!-- Left Side Form inputs -->
+              <div class="admin-editor-panel">
+                <div class="admin-form-scroll">
+                  
+                  <div class="form-row-2">
+                    <div class="form-group">
+                      <label class="form-label">ชื่อเพลง *</label>
+                      <input type="text" id="admin-title" class="form-input" placeholder="เช่น Can't Smile Without You">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">ชื่อศิลปิน *</label>
+                      <input type="text" id="admin-artist" class="form-input" placeholder="เช่น Barry Manilow">
+                    </div>
+                  </div>
+
+                  <div class="form-row-2">
+                    <div class="form-group">
+                      <label class="form-label">คีย์ตั้งต้น</label>
+                      <select id="admin-key" class="form-input">
+                        <option value="C">C</option><option value="Db">Db</option><option value="D">D</option>
+                        <option value="Eb">Eb</option><option value="E">E</option><option value="F">F</option>
+                        <option value="Gb">Gb</option><option value="G" selected>G</option><option value="Ab">Ab</option>
+                        <option value="A">A</option><option value="Bb">Bb</option><option value="B">B</option>
+                        <option value="Am">Am</option><option value="Em">Em</option><option value="Dm">Dm</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">ความเร็วเพลง (BPM)</label>
+                      <input type="number" id="admin-tempo" class="form-input" value="94">
+                    </div>
+                  </div>
+
+
+                  <div class="form-group">
+                    <label class="form-label">อัพโหลดรูปภาพชีทคอร์ดเพลงประกอบ (แนบเสริมหรือเซฟเก็บเฉพาะรูปแทนได้)</label>
+                    <input type="file" id="admin-image-upload" class="form-input" accept="image/*">
+                  </div>
+
+                  <!-- OCR Tool Container -->
+                  <div class="form-group ocr-tool-container">
+                    <div class="ocr-tool-header">
+                      <span class="ocr-tool-title">✨ เครื่องมือถอดคอร์ดจากรูปภาพ (OCR)</span>
+                    </div>
+                    <p class="ocr-tool-desc">ถอดเนื้อร้องพร้อมคอร์ดจากชีทเพลงด้วย AI หรือระบบในเครื่อง</p>
+                    
+                    <!-- Mode Switcher Tab Grid -->
+                    <div class="ocr-mode-tabs">
+                      <button type="button" id="tab-ocr-local" class="ocr-tab-btn active">สแกนธรรมดา (Local OCR)</button>
+                      <button type="button" id="tab-ocr-ai" class="ocr-tab-btn">สแกนอัจฉริยะ (Gemini AI - 100%)</button>
+                    </div>
+
+                    <!-- File input & Mode specific parameters -->
+                    <div class="ocr-controls-row">
+                      <div class="ocr-input-group">
+                        <label class="ocr-sub-label">เลือกไฟล์รูปภาพชีทเพลง</label>
+                        <input type="file" id="ocr-image-input" class="form-input" accept="image/*">
+                      </div>
+                      
+                      <!-- Local Mode parameters -->
+                      <div id="ocr-local-params" class="ocr-input-group">
+                        <label class="ocr-sub-label">ภาษาในรูปภาพ</label>
+                        <select id="ocr-language-select" class="form-input">
+                          <option value="tha+eng" selected>ไทย + อังกฤษ (แนะนำ)</option>
+                          <option value="eng">อังกฤษ (English Only)</option>
+                          <option value="tha">ไทย (Thai Only)</option>
+                        </select>
+                      </div>
+
+                      <!-- AI Mode parameters (Gemini API Key input) -->
+                      <div id="ocr-ai-params" class="ocr-input-group" style="display: none;">
+                        <label class="ocr-sub-label">Gemini API Key (<a href="https://aistudio.google.com/" target="_blank" style="color: var(--accent-color); text-decoration: underline;">รับคีย์ฟรีที่นี่</a>)</label>
+                        <input type="password" id="ocr-gemini-key" class="form-input" placeholder="วาง API Key (AIzaSy...) ที่นี่">
+                      </div>
+                    </div>
+
+                    <button type="button" id="btn-ocr-start" class="btn btn-secondary ocr-scan-btn">
+                      <span>🔍 เริ่มสแกนรูปภาพเป็นข้อความคอร์ด</span>
+                    </button>
+
+                    <div id="ocr-status-container" style="display: none; margin-top: 12px;">
+                      <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; color: var(--text-secondary);">
+                        <span id="ocr-status-text">กำลังเริ่มต้น...</span>
+                        <span id="ocr-percent-text">0%</span>
+                      </div>
+                      <div class="ocr-progress-bg">
+                        <div id="ocr-progress-bar" class="ocr-progress-fill" style="width: 0%;"></div>
+                      </div>
+                    </div>
+
+                    <div id="ocr-result-preview-container" style="display: none; margin-top: 12px;">
+                      <label class="ocr-sub-label">เนื้อเพลงและคอร์ดที่ถอดได้ (ตรวจสอบ/ปรับแต่งแก้ไขได้)</label>
+                      <textarea id="ocr-result-preview" class="form-textarea ocr-preview-textarea" placeholder="คอร์ดและเนื้อเพลงที่ถอดรหัสและจัดบรรทัดเรียบร้อยแล้ว..."></textarea>
+                      <button type="button" id="btn-ocr-insert" class="btn btn-accent" style="width: 100%; font-weight: 600;">
+                        📥 นำข้อมูลที่สแกนได้ไปใส่ในตัวแก้ไข
+                      </button>
+                    </div>
+                  </div>
+
+
+                  <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                    <label class="form-label">เนื้อเพลงและคอร์ดรูปแบบ Bracket ( e.g., [C] คนที่ [G] รักเธอ )</label>
+                    
+                    <!-- Quick helpers insertions tools bar -->
+                    <div class="editor-quick-tools">
+                      <button class="quick-tool-btn" onclick="document.getElementById('admin-content').setRangeText('[C]')">[C]</button>
+                      <button class="quick-tool-btn" onclick="document.getElementById('admin-content').setRangeText('[Dm]')">[Dm]</button>
+                      <button class="quick-tool-btn" onclick="document.getElementById('admin-content').setRangeText('[Em]')">[Em]</button>
+                      <button class="quick-tool-btn" onclick="document.getElementById('admin-content').setRangeText('[F]')">[F]</button>
+                      <button class="quick-tool-btn" onclick="document.getElementById('admin-content').setRangeText('[G]')">[G]</button>
+                      <button class="quick-tool-btn" onclick="document.getElementById('admin-content').setRangeText('[Am]')">[Am]</button>
+                      <button class="quick-tool-btn" style="background-color: var(--accent-glow); color: var(--accent-color);" onclick="document.getElementById('admin-content').setRangeText('[section: Intro]\\n| [C] | [Am] |')">เพิ่ม Intro</button>
+                      <button class="quick-tool-btn" style="background-color: var(--accent-glow); color: var(--accent-color);" onclick="document.getElementById('admin-content').setRangeText('[section: Hook]\\n')">เพิ่ม Hook</button>
+                    </div>
+                    
+                    <textarea id="admin-content" class="form-textarea" placeholder="พิมพ์คอร์ดในเครื่องหมาย [] แทรกข้างหน้าคำร้อง เช่น [G] You know I can't..."></textarea>
+                  </div>
+
+                </div>
+                
+                <!-- Actions -->
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                  <button id="btn-admin-save" class="btn flex-1">💾 บันทึกเพลง</button>
+                  <button id="btn-admin-cancel" class="btn btn-secondary">ยกเลิก</button>
+                </div>
+              </div>
+              
+              <!-- Right Side Realtime Previews panel -->
+              <div class="admin-preview-panel">
+                <div class="sidebar-title" style="margin-bottom: 12px;">Live Preview (หน้าจอแสดงผลจำลอง)</div>
+                <div id="admin-preview-content" style="flex: 1; overflow-y: auto; background-color: var(--bg-primary); border-radius: 12px; padding: 16px; border: 1px solid var(--border-color);">
+                  <!-- Realtime Preview sheet renders here -->
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+        
+      </main>
+      
+    </div>
+    
+  </div>
+  
+  <!-- 3. MODAL DIALOGS OVERLAYS -->
+  
+  <!-- MODAL A: KEY TRANSPOSE SELECTOR GRID (Screenshot 3) -->
+  <div id="modal-transpose" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">เลือกคีย์ที่ต้องการเปลี่ยน (Transpose)</h3>
+        <button class="modal-close">✕</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+        เลือกคีย์หลักเพื่อปรับเสียงคอร์ดทั้งหมดของเพลงให้ลงตัวตามช่วงเสียงร้องของคุณ
+      </p>
+      
+      <!-- 3x4 layout matching image 3 -->
+      <div id="transpose-grid-container" class="transpose-grid">
+        <!-- Transpose key nodes inject dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL B: PLAYLIST CREATOR & ASSIGNER -->
+  <div id="modal-playlist" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">สร้างลิสต์เพลงใหม่</h3>
+        <button class="modal-close">✕</button>
+      </div>
+      
+      <!-- Name form creators -->
+      <div id="playlist-creator-inputs">
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label class="form-label">ชื่อเพลย์ลิสต์</label>
+          <input type="text" id="playlist-name-input" class="form-input" placeholder="เช่น เพลงฝึกซ้อมประจำสัปดาห์ 🎸">
+        </div>
+        <button id="btn-save-playlist" class="btn" style="width: 100%; justify-content: center;">💾 บันทึกเพลย์ลิสต์</button>
+      </div>
+
+      <!-- Add songs to list checkbox picker -->
+      <div id="add-playlist-picker-list" class="form-group hidden" style="max-height: 300px; overflow-y: auto;">
+        <!-- Checkboxes inject dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL C: TOOLS / SHARE INTERACTIVE PANEL -->
+  <div id="modal-share" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">แชร์คอร์ดเพลงร่วมกัน</h3>
+        <button class="modal-close">✕</button>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <p style="font-size: 13px; color: var(--text-secondary);">
+          แชร์คอร์ดเพลง <strong id="share-song-title" style="color: var(--text-primary);"></strong> ไปยังอุปกรณ์อื่นๆ หรือส่งต่อให้เพื่อนร่วมวงดนตรีของคุณ
+        </p>
+        
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div class="share-qr-container">
+            <canvas id="share-qr-canvas"></canvas>
+          </div>
+          <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">สแกน QR Code นี้ผ่านมือถือเครื่องอื่นเพื่อเปิดคอร์ดเพลงนี้ทันที</small>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 8px;">
+          <!-- Native AirDrop / Sharing systems -->
+          <button id="btn-trigger-webshare" class="btn flex-1" style="justify-content: center;">
+            <span>📤 AirDrop / ส่งผ่านเว็บ</span>
+          </button>
+          
+          <!-- Download image file -->
+          <button id="btn-export-png-file" class="btn btn-secondary flex-1" style="justify-content: center;">
+            <span>🖼️ ส่งออกเป็นรูปภาพ (.png)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL D: WEB CRAWLER / CRAWL IMPORTER PASTE BIN -->
+  <div id="modal-import" class="modal-overlay">
+    <div class="modal-content" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 class="modal-title">ดึงข้อมูลคอร์ดเพลงจากภายนอก</h3>
+        <button class="modal-close">✕</button>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <p style="font-size: 13px; color: var(--text-secondary);">
+          เนื่องจากข้อจำกัดทางความปลอดภัยของเบราว์เซอร์ (CORS) ในการเปิดเว็บโดยตรง วิธีที่สะดวกที่สุดคือ:
+        </p>
+        
+        <div style="background-color: var(--bg-input); padding: 12px; border-radius: 8px; border-left: 3px solid var(--accent-color); font-size: 12px; line-height: 1.6;">
+          <strong>💡 ขั้นตอนง่ายๆ ในการนำเข้า:</strong><br>
+          1. เข้าเว็บคอร์ดเพลงที่ต้องการ (เช่น chordtabs, chordify, หรือเว็บอื่นๆ)<br>
+          2. คัดลอกข้อความท่อนร้องที่มีคอร์ดวางอยู่บนเนื้อร้องทั้งหมด (หรือกด Ctrl+A แล้วคัดลอกทั้งหน้าเว็บ)<br>
+          3. นำมาวางในกล่องข้อความด้านล่างนี้ ระบบจะทำการล้างป้ายโฆษณาและนำเข้าแปลงไฟล์ทันที!
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">วางข้อความ / หน้าโค้ด HTML ของเว็บคอร์ดเพลงที่ต้องการดึง:</label>
+          <textarea id="crawler-paste-area" class="form-textarea crawler-pasted-html" placeholder="คัดลอกเนื้อหาหน้าเว็บหรือเนื้อร้องคอร์ดแบบ Interleaved มาวางที่นี่..."></textarea>
+        </div>
+
+        <button id="btn-crawler-convert" class="btn" style="width: 100%; justify-content: center; padding: 12px;">
+          <span>⚡ เริ่มต้นแปลงข้อมูลและจัดคอร์ดคีย์บอร์ด</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL E: TAG MANAGER (จัดการหมวดหมู่) -->
+  <div id="modal-tags" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">จัดการหมวดหมู่เพลง</h3>
+        <button class="modal-close">✕</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="form-group">
+          <label class="form-label">เพิ่มหมวดหมู่ใหม่</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="tag-manager-new-input" class="form-input flex-1" placeholder="เช่น Acoustic, Indy, 2010s">
+            <button id="btn-tag-manager-add" class="btn">เพิ่ม</button>
+          </div>
+        </div>
+        <label class="form-label">รายการหมวดหมู่ที่มีอยู่ (แก้ไขชื่อหรือลบ)</label>
+        <div id="tag-manager-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 240px; overflow-y: auto; background-color: var(--bg-input); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <!-- Tag rows dynamically inject here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Core Database & logic files load order -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="songs.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
