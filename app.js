@@ -1,34 +1,70 @@
 // PakJer Song Playlist & Chord System Core Application Logic
 
 document.addEventListener('DOMContentLoaded', () => {
+
+  // --- FIREBASE INITIALIZATION ---
+  let dbSongs = null;
+  let dbPlaylists = null;
+  let dbTags = null;
+  let firebaseActive = false;
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyC0R6cx949e10XkpM62SEeAr87rUYXg-Nk",
+    authDomain: "pakjer-71b0b.firebaseapp.com",
+    databaseURL: "https://pakjer-71b0b-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "pakjer-71b0b",
+    storageBucket: "pakjer-71b0b.firebasestorage.app",
+    messagingSenderId: "1055197718278",
+    appId: "1:1055197718278:web:373e52448c6979bb002087",
+    measurementId: "G-GX7EXWP6HN"
+  };
+
+  try {
+    if (typeof firebase !== 'undefined') {
+      const fbApp = firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+      dbSongs = db.ref('songs');
+      dbPlaylists = db.ref('playlists');
+      dbTags = db.ref('customTags');
+      firebaseActive = true;
+      console.log('Firebase initialized successfully.');
+    } else {
+      console.warn('Firebase library not found. Operating in local mode.');
+    }
+  } catch (error) {
+    console.error('Firebase failed to initialize:', error);
+  }
+
   // --- APPLICATION STATE ---
   let songs = [];
   let playlists = [];
-  
+
   let currentSongId = null;
   let currentPlaylistId = null;
   let selectedTag = null;
   let currentKeyOffset = 0;
   let currentScaleScalar = 1.0;
   let customTags = [];
-  let ocrMode = 'local'; // 'local' or 'ai'
-  
+  let lastOcrScannedText = '';
+
   // Autoscroll State
   let isScrolling = false;
   let autoscrollSpeed = 20; // Pixels per second
   let lastScrollTime = 0;
   let scrollFrameId = null;
-  
+
   // Metronome State
   let audioCtx = null;
   let isMetronomePlaying = false;
   let metronomeIntervalId = null;
   let metronomeBpm = 94;
   let currentBeat = 0;
-  
+
   // Importer/Admin State
   let activeAdminSongId = null; // null means creating new
   let uploadedImageBase64 = null;
+  let ocrDetectedKey = null;
+  let ocrDetectedBpm = null;
 
   // Key scales for transposition matching Screenshot 3
   const KEY_SCALES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -44,18 +80,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const playlistList = document.getElementById('sidebar-playlist-list');
   const tagCloud = document.getElementById('sidebar-tag-cloud');
   const totalSongsCount = document.getElementById('total-songs-count');
-  
+
   // Library Elements
   const songGrid = document.getElementById('song-grid');
   const searchInput = document.getElementById('search-input');
-  
+
   // Song Viewer Elements
   const songTitle = document.getElementById('song-title');
   const songArtist = document.getElementById('song-artist');
   const songMetricTempo = document.getElementById('song-metric-tempo');
   const songSheetContent = document.getElementById('song-sheet-content');
   const songImageContainer = document.getElementById('song-image-container');
-  
+  const btnSongNavClose = document.getElementById('btn-song-nav-close');
+  const btnSongNavPrev = document.getElementById('btn-song-nav-prev');
+  const btnSongNavNext = document.getElementById('btn-song-nav-next');
+  const appMainContent = document.querySelector('.app-main-content');
+
   // Controls Toolbar Elements
   const btnKeyDec = document.getElementById('btn-key-dec');
   const btnKeyInc = document.getElementById('btn-key-inc');
@@ -85,22 +125,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // OCR DOM Elements
   const ocrImageInput = document.getElementById('ocr-image-input');
-  const ocrLanguageSelect = document.getElementById('ocr-language-select');
   const btnOcrStart = document.getElementById('btn-ocr-start');
   const ocrStatusContainer = document.getElementById('ocr-status-container');
   const ocrStatusText = document.getElementById('ocr-status-text');
   const ocrPercentText = document.getElementById('ocr-percent-text');
   const ocrProgressBar = document.getElementById('ocr-progress-bar');
-  const ocrResultPreviewContainer = document.getElementById('ocr-result-preview-container');
-  const ocrResultPreview = document.getElementById('ocr-result-preview');
+  const ocrInsertRow = document.getElementById('ocr-insert-row');
   const btnOcrInsert = document.getElementById('btn-ocr-insert');
-
-  const tabOcrLocal = document.getElementById('tab-ocr-local');
-  const tabOcrAi = document.getElementById('tab-ocr-ai');
-  const ocrLocalParams = document.getElementById('ocr-local-params');
-  const ocrAiParams = document.getElementById('ocr-ai-params');
   const ocrGeminiKey = document.getElementById('ocr-gemini-key');
-  
+
   // Modals Elements
   const modals = {
     transpose: document.getElementById('modal-transpose'),
@@ -116,9 +149,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- INITIALIZATION ---
   function init() {
-    loadDatabase();
+    loadDatabaseLocal(); // Load from localStorage first for instant display
     bindEvents();
-    
+
     // Load stored Gemini key
     const savedGeminiKey = localStorage.getItem('pakjer_gemini_key');
     if (savedGeminiKey && ocrGeminiKey) {
@@ -128,53 +161,235 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSidebar();
     renderLibrary();
     showView('library');
+
+    // Then sync from Firebase (cloud data overrides local)
+    loadDatabaseFromFirebase();
+
+    // Listen for real-time changes from Firebase
+    setupFirebaseListeners();
   }
 
   // --- STATE PERSISTENCE ---
-  function loadDatabase() {
-    // Load Songs
+
+  // Step 1: Load from localStorage for instant boot
+  function loadDatabaseLocal() {
     const storedSongs = localStorage.getItem('pakjer_songs');
     if (storedSongs) {
-      songs = JSON.parse(storedSongs);
+      try {
+        songs = JSON.parse(storedSongs).filter(s => s && s.id);
+      } catch (e) {
+        songs = PRESEEDED_SONGS;
+      }
     } else {
       songs = PRESEEDED_SONGS;
       localStorage.setItem('pakjer_songs', JSON.stringify(songs));
     }
 
-    // Load Playlists
     const storedPlaylists = localStorage.getItem('pakjer_playlists');
     if (storedPlaylists) {
-      playlists = JSON.parse(storedPlaylists);
+      try {
+        playlists = JSON.parse(storedPlaylists).map(pl => {
+          if (pl) pl.songs = pl.songs || [];
+          return pl;
+        }).filter(pl => pl && pl.id);
+      } catch (e) {
+        playlists = [
+          { id: 'favs', name: 'My Favorites ❤️', songs: ['cant-smile-without-you', '100-reason'] }
+        ];
+      }
     } else {
       playlists = [
         { id: 'favs', name: 'My Favorites ❤️', songs: ['cant-smile-without-you', '100-reason'] }
       ];
       localStorage.setItem('pakjer_playlists', JSON.stringify(playlists));
     }
-    // Load Custom tags
+
     customTags = JSON.parse(localStorage.getItem('pakjer_custom_tags')) || [];
+  }
+
+  // Step 2: Load from Firebase and merge/override
+  function loadDatabaseFromFirebase() {
+    if (!firebaseActive) return;
+
+    dbSongs.once('value').then(snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        const rawSongs = Array.isArray(data) ? data : Object.values(data);
+        songs = rawSongs.filter(s => s && s.id);
+        localStorage.setItem('pakjer_songs', JSON.stringify(songs));
+        renderSidebar();
+        renderLibrary();
+      } else {
+        // First time: push local data to Firebase
+        pushAllSongsToFirebase();
+      }
+    }).catch(err => console.warn('Firebase songs load failed, using local:', err));
+
+    dbPlaylists.once('value').then(snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        const rawPlaylists = Array.isArray(data) ? data : Object.values(data);
+        playlists = rawPlaylists.map(pl => {
+          if (pl) pl.songs = pl.songs || [];
+          return pl;
+        }).filter(pl => pl && pl.id);
+        localStorage.setItem('pakjer_playlists', JSON.stringify(playlists));
+        renderSidebar();
+      } else {
+        pushAllPlaylistsToFirebase();
+      }
+    }).catch(err => console.warn('Firebase playlists load failed, using local:', err));
+
+    dbTags.once('value').then(snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        customTags = Array.isArray(data) ? data : Object.values(data);
+        localStorage.setItem('pakjer_custom_tags', JSON.stringify(customTags));
+        renderSidebar();
+      } else {
+        if (customTags.length > 0) {
+          dbTags.set(customTags).catch(err => console.warn('Firebase tags push failed:', err));
+        }
+      }
+    }).catch(err => console.warn('Firebase tags load failed, using local:', err));
+  }
+
+  // Step 3: Real-time listeners for live sync
+  function setupFirebaseListeners() {
+    if (!firebaseActive) return;
+
+    dbSongs.on('value', snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        const rawSongs = Array.isArray(data) ? data : Object.values(data);
+        songs = rawSongs.filter(s => s && s.id);
+        localStorage.setItem('pakjer_songs', JSON.stringify(songs));
+        renderSidebar();
+        renderLibrary();
+      }
+    });
+
+    dbPlaylists.on('value', snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        const rawPlaylists = Array.isArray(data) ? data : Object.values(data);
+        playlists = rawPlaylists.map(pl => {
+          if (pl) pl.songs = pl.songs || [];
+          return pl;
+        }).filter(pl => pl && pl.id);
+        localStorage.setItem('pakjer_playlists', JSON.stringify(playlists));
+        renderSidebar();
+      }
+    });
+
+    dbTags.on('value', snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        customTags = Array.isArray(data) ? data : Object.values(data);
+        localStorage.setItem('pakjer_custom_tags', JSON.stringify(customTags));
+        renderSidebar();
+      }
+    });
+  }
+
+  // --- SAVE FUNCTIONS (write to both localStorage + Firebase) ---
+
+  function pushAllSongsToFirebase() {
+    if (!firebaseActive || !dbSongs) return;
+    try {
+      const songsObj = {};
+      songs.forEach(s => {
+        if (s && s.id) {
+          songsObj[s.id] = s;
+        }
+      });
+      dbSongs.set(songsObj).catch(err => console.warn('Firebase songs push failed:', err));
+    } catch (e) {
+      console.warn('Error pushing songs to Firebase:', e);
+    }
+  }
+
+  function pushAllPlaylistsToFirebase() {
+    if (!firebaseActive || !dbPlaylists) return;
+    try {
+      const plObj = {};
+      playlists.forEach(pl => {
+        if (pl && pl.id) {
+          plObj[pl.id] = pl;
+        }
+      });
+      dbPlaylists.set(plObj).catch(err => console.warn('Firebase playlists push failed:', err));
+    } catch (e) {
+      console.warn('Error pushing playlists to Firebase:', e);
+    }
   }
 
   function saveSongsToStorage() {
     localStorage.setItem('pakjer_songs', JSON.stringify(songs));
+    pushAllSongsToFirebase();
   }
+
+  // --- SAVE FUNCTIONS (write to both localStorage + Firebase) ---
 
   function savePlaylistsToStorage() {
     localStorage.setItem('pakjer_playlists', JSON.stringify(playlists));
+    pushAllPlaylistsToFirebase();
+  }
+
+  function saveCustomTagsToStorage() {
+    localStorage.setItem('pakjer_custom_tags', JSON.stringify(customTags));
+    if (firebaseActive && dbTags) {
+      try {
+        dbTags.set(customTags).catch(err => console.warn('Firebase tags save failed:', err));
+      } catch (e) {
+        console.warn('Error saving tags to Firebase:', e);
+      }
+    }
   }
 
   // --- EVENT BINDING ---
   function bindEvents() {
     // Logo Click (Back to Library)
-    document.querySelector('.logo-container').addEventListener('click', () => {
-      currentSongId = null;
-      currentPlaylistId = null;
-      selectedTag = null;
-      document.querySelectorAll('.playlist-item').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.tag-chip').forEach(el => el.classList.remove('active'));
-      renderLibrary();
-      showView('library');
-    });
+    const logoContainer = document.querySelector('.logo-container');
+    if (logoContainer) {
+      logoContainer.addEventListener('click', () => {
+        try {
+          currentSongId = null;
+          currentPlaylistId = null;
+          selectedTag = null;
+          if (searchInput) searchInput.value = '';
+          document.querySelectorAll('.playlist-item').forEach(el => el.classList.remove('active'));
+          document.querySelectorAll('.tag-chip').forEach(el => el.classList.remove('active'));
+          renderSidebar();
+          renderLibrary();
+          showView('library');
+        } catch (err) {
+          console.error('Error in logo click:', err);
+        }
+      });
+    }
+
+    // Sidebar Home Section Click (Back to Library)
+    const sidebarHomeBtn = document.getElementById('sidebar-home-btn');
+    if (sidebarHomeBtn) {
+      sidebarHomeBtn.addEventListener('click', () => {
+        try {
+          currentSongId = null;
+          currentPlaylistId = null;
+          selectedTag = null;
+          if (searchInput) searchInput.value = '';
+          document.querySelectorAll('.playlist-item').forEach(el => el.classList.remove('active'));
+          if (tagCloud) {
+            tagCloud.querySelectorAll('.tag-chip').forEach(el => el.classList.remove('active'));
+          }
+          renderSidebar();
+          renderLibrary();
+          showView('library');
+        } catch (err) {
+          console.error('Error in sidebarHomeBtn click:', err);
+        }
+      });
+    }
 
     // Search Input
     searchInput.addEventListener('input', () => {
@@ -208,6 +423,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     btnMetronome.addEventListener('click', toggleMetronome);
     btnTools.addEventListener('click', openShareModal);
+
+    if (btnSongNavClose) btnSongNavClose.addEventListener('click', closeSongView);
+    if (btnSongNavPrev) btnSongNavPrev.addEventListener('click', () => navigateSong(-1));
+    if (btnSongNavNext) btnSongNavNext.addEventListener('click', () => navigateSong(1));
 
     // Playlist Rename & Delete bindings
     document.getElementById('btn-edit-playlist-name').addEventListener('click', () => {
@@ -245,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnTagManagerAdd) {
       btnTagManagerAdd.addEventListener('click', addCategoryFromManager);
     }
-    
+
     // Section Jump Dropdown Toggle
     btnSections.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -285,36 +504,40 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Admin Form Events
-    adminImageUpload.addEventListener('change', handleImageUpload);
-    adminContent.addEventListener('input', updateAdminPreview);
-    btnAdminSave.addEventListener('click', saveAdminSong);
-    btnAdminCancel.addEventListener('click', () => {
-      if (currentSongId) {
-        showSong(currentSongId);
-      } else {
-        showView('library');
-      }
-    });
+    if (adminImageUpload) adminImageUpload.addEventListener('change', handleImageUpload);
+    if (adminContent) adminContent.addEventListener('input', updateAdminPreview);
+    if (btnAdminSave) {
+      btnAdminSave.addEventListener('click', (e) => {
+        try {
+          saveAdminSong();
+        } catch (err) {
+          console.error('Error saving admin song:', err);
+          alert('เกิดข้อผิดพลาดในการบันทึกเพลง: ' + err.message);
+        }
+      });
+    }
+    if (btnAdminCancel) {
+      btnAdminCancel.addEventListener('click', () => {
+        if (currentSongId) {
+          showSong(currentSongId);
+        } else {
+          showView('library');
+        }
+      });
+    }
+
+    // Admin Delete button (inside editor)
+    const btnAdminDelete = document.getElementById('btn-admin-delete');
+    if (btnAdminDelete) {
+      btnAdminDelete.addEventListener('click', () => {
+        if (activeAdminSongId) {
+          deleteSong(activeAdminSongId);
+        }
+      });
+    }
 
     // Importer/Crawler Paste Events
     document.getElementById('btn-crawler-convert').addEventListener('click', handleCrawlerImport);
-
-    // OCR Mode Switcher
-    tabOcrLocal.addEventListener('click', () => {
-      ocrMode = 'local';
-      tabOcrLocal.classList.add('active');
-      tabOcrAi.classList.remove('active');
-      ocrLocalParams.style.display = 'block';
-      ocrAiParams.style.display = 'none';
-    });
-
-    tabOcrAi.addEventListener('click', () => {
-      ocrMode = 'ai';
-      tabOcrAi.classList.add('active');
-      tabOcrLocal.classList.remove('active');
-      ocrLocalParams.style.display = 'none';
-      ocrAiParams.style.display = 'block';
-    });
 
     // Storing Gemini API key
     ocrGeminiKey.addEventListener('input', () => {
@@ -323,8 +546,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // OCR Action Events
     btnOcrStart.addEventListener('click', handleOcrExtraction);
-    btnOcrInsert.addEventListener('click', insertOcrContentToEditor);
+    if (btnOcrInsert) {
+      btnOcrInsert.addEventListener('click', () => {
+        if (!lastOcrScannedText.trim()) {
+          alert('ยังไม่มีข้อมูลที่สแกนได้ กรุณาสแกนรูปภาพก่อน');
+          return;
+        }
+        insertOcrContentDirectly(lastOcrScannedText);
+        btnOcrInsert.classList.remove('pulse-blink');
+        if (ocrInsertRow) ocrInsertRow.style.display = 'none';
+        lastOcrScannedText = '';
+      });
+    }
   }
+
+  // Helper to insert chords or text into the admin editor content
+  window.insertChordToEditor = function(chord) {
+    if (!adminContent) return;
+
+    let start = adminContent.selectionStart;
+    let end = adminContent.selectionEnd;
+
+    // If the cursor is at the very beginning (0/0) and the textarea is not empty,
+    // default to appending at the end (ต่อท้าย)
+    if (start === 0 && end === 0 && adminContent.value.length > 0) {
+      start = adminContent.value.length;
+      end = adminContent.value.length;
+    }
+
+    adminContent.focus();
+    adminContent.setRangeText(chord, start, end, 'end');
+
+    // Place the cursor right after the newly inserted chord
+    adminContent.selectionStart = adminContent.selectionEnd = start + chord.length;
+
+    // Trigger input event to update Live Preview in real-time
+    adminContent.dispatchEvent(new Event('input'));
+  };
 
   // --- ROUTING / VIEW CHANGING ---
   function showView(viewName) {
@@ -333,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
       stopAutoscroll();
       stopMetronome();
     }
-    
+
     // Toggle active view elements
     Object.keys(views).forEach(key => {
       if (key === viewName) {
@@ -348,6 +606,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderSidebar() {
     totalSongsCount.textContent = `${songs.length} เพลง`;
 
+    // Toggle active state for home button
+    const sidebarHomeBtnElement = document.getElementById('sidebar-home-btn');
+    if (sidebarHomeBtnElement) {
+      if (!currentPlaylistId && !selectedTag && !currentSongId) {
+        sidebarHomeBtnElement.classList.add('active');
+      } else {
+        sidebarHomeBtnElement.classList.remove('active');
+      }
+    }
+
     // Render Playlists
     playlistList.innerHTML = '';
     playlists.forEach(pl => {
@@ -355,7 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
       li.className = `playlist-item ${currentPlaylistId === pl.id ? 'active' : ''}`;
       li.innerHTML = `
         <span>📂 ${escapeHtml(pl.name)}</span>
-        <span class="playlist-count">${pl.songs.length}</span>
+        <span class="playlist-count">${(pl.songs || []).length}</span>
       `;
       li.addEventListener('click', () => {
         currentPlaylistId = pl.id;
@@ -363,39 +631,109 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSongId = null;
         document.querySelectorAll('.playlist-item').forEach(el => el.classList.remove('active'));
         li.classList.add('active');
-        document.querySelectorAll('.tag-chip').forEach(el => el.classList.remove('active'));
+        if (tagCloud) {
+          tagCloud.querySelectorAll('.tag-chip').forEach(el => el.classList.remove('active'));
+        }
         renderLibrary();
         showView('library');
       });
       playlistList.appendChild(li);
     });
 
+    // Render Category Tags
+    if (tagCloud) {
+      tagCloud.innerHTML = '';
+      const allTags = new Set();
+      songs.forEach(s => {
+        if (s.tags && Array.isArray(s.tags)) {
+          s.tags.forEach(t => allTags.add(t));
+        }
+      });
+      customTags.forEach(t => allTags.add(t));
+
+      allTags.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = `tag-chip ${selectedTag === tag ? 'active' : ''}`;
+        chip.textContent = `🏷️ ${tag}`;
+        chip.addEventListener('click', () => {
+          if (selectedTag === tag) {
+            selectedTag = null; // Toggle off if clicked again
+          } else {
+            selectedTag = tag;
+            currentPlaylistId = null; // mutually exclusive
+            document.querySelectorAll('.playlist-item').forEach(el => el.classList.remove('active'));
+          }
+          renderSidebar();
+          renderLibrary();
+          showView('library');
+        });
+        tagCloud.appendChild(chip);
+      });
+    }
+  }
+
+  /** รายการเพลงตามลิสต์/แท็ก/คำค้นหา (ใช้กริดคลัง + ปุ่ม < > ในหน้าเพลง) */
+  function getFilteredSongs() {
+    const query = searchInput.value.toLowerCase().trim();
+    let filteredSongs = songs;
+
+    if (currentPlaylistId) {
+      const pl = playlists.find(p => p.id === currentPlaylistId);
+      if (pl) {
+        filteredSongs = filteredSongs.filter(s => s && (pl.songs || []).includes(s.id));
+      }
+    }
+
+    if (selectedTag) {
+      filteredSongs = filteredSongs.filter(s => s.tags && s.tags.includes(selectedTag));
+    }
+
+    if (query) {
+      filteredSongs = filteredSongs.filter(s =>
+        s.title.toLowerCase().includes(query) ||
+        s.artist.toLowerCase().includes(query)
+      );
+    }
+
+    return filteredSongs;
+  }
+
+  function getSongNavigationList() {
+    const filtered = getFilteredSongs();
+    if (currentSongId && filtered.some(s => s.id === currentSongId)) return filtered;
+    return songs;
+  }
+
+  function updateSongNavButtons() {
+    const list = getSongNavigationList();
+    const idx = list.findIndex(s => s.id === currentSongId);
+    if (btnSongNavPrev) btnSongNavPrev.disabled = idx <= 0;
+    if (btnSongNavNext) btnSongNavNext.disabled = idx < 0 || idx >= list.length - 1;
+  }
+
+  function navigateSong(delta) {
+    const list = getSongNavigationList();
+    const idx = list.findIndex(s => s.id === currentSongId);
+    const nextIdx = idx + delta;
+    if (nextIdx < 0 || nextIdx >= list.length) return;
+
+    showSong(list[nextIdx].id);
+    if (appMainContent) {
+      appMainContent.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  function closeSongView() {
+    stopAutoscroll();
+    stopMetronome();
+    currentSongId = null;
+    renderSidebar();
+    showView('library');
   }
 
   // --- LIBRARY / SEARCH RENDERING ---
   function renderLibrary() {
-    const query = searchInput.value.toLowerCase().trim();
-    
-    // Filter songs
-    let filteredSongs = songs;
-
-
-
-    // Filter by Selected Sidebar Playlist
-    if (currentPlaylistId) {
-      const pl = playlists.find(p => p.id === currentPlaylistId);
-      if (pl) {
-        filteredSongs = filteredSongs.filter(s => pl.songs.includes(s.id));
-      }
-    }
-
-    // Filter by Text Query
-    if (query) {
-      filteredSongs = filteredSongs.filter(s => 
-        s.title.toLowerCase().includes(query) || 
-        s.artist.toLowerCase().includes(query)
-      );
-    }
+    const filteredSongs = getFilteredSongs();
 
     // Render title text and actions
     const plActions = document.getElementById('playlist-actions-container');
@@ -407,6 +745,10 @@ document.addEventListener('DOMContentLoaded', () => {
       titleText.textContent = pl ? pl.name : 'ลิสต์เพลง';
       subtitleText.textContent = `รวมเพลงในลิสต์ทั้งหมด ${filteredSongs.length} เพลง`;
       plActions.classList.remove('hidden');
+    } else if (selectedTag) {
+      titleText.textContent = `หมวดหมู่: ${selectedTag}`;
+      subtitleText.textContent = `รวมเพลงในหมวดหมู่ทั้งหมด ${filteredSongs.length} เพลง`;
+      plActions.classList.add('hidden');
     } else {
       plActions.classList.add('hidden');
       titleText.textContent = 'คลังเพลงของฉัน';
@@ -416,21 +758,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render Song Grid
     songGrid.innerHTML = '';
     if (filteredSongs.length === 0) {
+      let restoreBtnHtml = '';
+      if (songs.length === 0) {
+        restoreBtnHtml = `
+          <div style="margin-top: 16px;">
+            <button id="btn-restore-samples" class="btn" style="padding: 8px 16px; font-size: 13px;">
+              🔄 คืนค่าเพลงตัวอย่าง (4 เพลง)
+            </button>
+          </div>
+        `;
+      }
       songGrid.innerHTML = `
         <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">
           <p style="font-size: 18px; margin-bottom: 8px;">ไม่พบผลลัพธ์เพลง</p>
           <small>ลองเปลี่ยนคำค้นหา หรือสร้างเพลงใหม่ได้เลยตอนนี้!</small>
+          ${restoreBtnHtml}
         </div>
       `;
+
+      const btnRestore = document.getElementById('btn-restore-samples');
+      if (btnRestore) {
+        btnRestore.onclick = () => {
+          songs = PRESEEDED_SONGS;
+          saveSongsToStorage();
+          renderSidebar();
+          renderLibrary();
+        };
+      }
       return;
     }
 
     filteredSongs.forEach(song => {
       const card = document.createElement('div');
       card.className = 'song-card';
-      
+
       card.innerHTML = `
-        <div>
+        <div class="song-card-body">
           <div class="card-title">${escapeHtml(song.title)}</div>
           <div class="card-artist">${escapeHtml(song.artist)}</div>
         </div>
@@ -439,11 +802,11 @@ document.addEventListener('DOMContentLoaded', () => {
           <span>♩ ${song.tempo}</span>
         </div>
       `;
-      
+
       card.addEventListener('click', () => {
         showSong(song.id);
       });
-      
+
       songGrid.appendChild(card);
     });
   }
@@ -458,26 +821,34 @@ document.addEventListener('DOMContentLoaded', () => {
     metronomeBpm = song.tempo; // Set metronome bpm
 
     // Fill Hero Card Metadata
-    songTitle.textContent = song.title;
-    songArtist.textContent = song.artist;
-    
+    songTitle.textContent = `${song.title} : ${song.artist}`;
+    if (songArtist) songArtist.textContent = song.artist;
+
     // Metas
-    songMetricTempo.innerHTML = `<svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/></svg> ♩ = ${song.tempo}`;
-    
+    if (songMetricTempo) {
+      songMetricTempo.innerHTML = `<svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/></svg> ♩ = ${song.tempo}`;
+    }
+
     // Key selector text (G (Ori) etc.)
     updateKeyTransposeDisplay();
 
     // Admin edit trigger
     const editBtn = document.getElementById('btn-song-edit');
-    editBtn.onclick = () => openAdminEditor(song);
+    if (editBtn) {
+      editBtn.onclick = () => openAdminEditor(song);
+    }
 
-    // Delete song trigger
+    // Delete song trigger (placed defensively)
     const deleteBtn = document.getElementById('btn-song-delete');
-    deleteBtn.onclick = () => deleteSong(song.id);
+    if (deleteBtn) {
+      deleteBtn.onclick = () => deleteSong(song.id);
+    }
 
     // Add to Playlist picker trigger
     const addToPlBtn = document.getElementById('btn-song-add-playlist');
-    addToPlBtn.onclick = () => openAddToPlaylistModal(song.id);
+    if (addToPlBtn) {
+      addToPlBtn.onclick = () => openAddToPlaylistModal(song.id);
+    }
 
     // Render chords & lyrics content
     renderChordSheet(song);
@@ -491,91 +862,193 @@ document.addEventListener('DOMContentLoaded', () => {
       songImageContainer.classList.add('hidden');
     }
 
+    renderSidebar();
+    updateSongNavButtons();
     showView('song');
+  }
+
+  function isSectionHeaderLine(line) {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      if (trimmed.startsWith('[section:')) return true;
+      const inner = trimmed.slice(1, -1).trim();
+      if (inner.includes('[') || inner.includes(']')) return false;
+      const chordRegex = /^[A-G][#b]?(?:m|maj|dim|aug|sus|add|7|9|11|13)*(?:\/[A-G][#b]?)?$/i;
+      return !chordRegex.test(inner);
+    }
+
+    return isPlainSectionHeaderLine(trimmed);
+  }
+
+  function isPlainSectionHeaderLine(trimmed) {
+    if (trimmed.length > 48 || /[ก-๙]/.test(trimmed)) return false;
+    if (/[|]/.test(trimmed) && /[A-G][#b]?/i.test(trimmed)) return false;
+    const sectionLabel = /^(intro|outro|outtro|instru|instruments?|instrumental|interlude|verse|chorus|hook|bridge|pre-?chorus|solo|coda|ending|ท่อน|อินโทร|เอาท์โทร|ดนตรี)(?:\s*[\d.:|\-]*)?$/i;
+    return sectionLabel.test(trimmed);
+  }
+
+  function getSectionName(line) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('[section:')) {
+      return trimmed.substring(9, trimmed.length - 1).trim();
+    }
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      return trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+  }
+
+  /** Intro/Outro → white, Instru → yellow, else → orange (no class). */
+  function applySectionColorClass(sectionBlock, sectionName) {
+    const lower = sectionName.toLowerCase();
+    if (lower.includes('intro') || lower.includes('อินโทร')) {
+      sectionBlock.classList.add('section-intro');
+    } else if (lower.includes('outro') || lower.includes('outtro') || lower.includes('เอาท์โทร') || lower.includes('จบท้าย') || lower.includes('coda') || lower.includes('ending')) {
+      sectionBlock.classList.add('section-outro');
+    } else if (lower.includes('instru') || lower.includes('instrument') || lower.includes('ดนตรี') || lower.includes('interlude')) {
+      sectionBlock.classList.add('section-instruments');
+    }
+  }
+
+  function isLineWithLyrics(line) {
+    const trimmed = line.trim();
+    if (trimmed === '') return false;
+    if (isSectionHeaderLine(trimmed)) return false;
+
+    if (line.includes('[') && line.includes(']')) {
+      const parsed = splitBracketedLine(line);
+      return parsed.lyricLine.trim() !== '';
+    }
+
+    return !isChordLine(line);
   }
 
   // --- RENDERING CHORD SHEET WITH TRANSPOSITION ---
   function renderChordSheet(song) {
-    const content = song.content || '';
-    const lines = content.split('\n');
-    
     songSheetContent.innerHTML = '';
-    
+    const sectionsFound = renderSheetLines(songSheetContent, song.content || '', currentKeyOffset, song.key);
+    renderSectionMenu(sectionsFound);
+  }
+
+  /**
+   * Shared renderer — preserves OCR/interleaved spacing exactly on every view.
+   * Interleaved scan (chord row + lyric row) is shown as-is without re-merging.
+   */
+  function renderSheetLines(container, content, keyOffset, songKey) {
+    const lines = content.split('\n');
+    const sectionsFound = [];
     let activeSectionBlock = null;
-    let sectionsFound = [];
 
-    // Force monospaced pre-wrap rendering for perfect space alignment
-    songSheetContent.style.fontFamily = 'var(--font-mono, monospace)';
-    songSheetContent.style.whiteSpace = 'pre-wrap';
-
-    lines.forEach((line, lineIndex) => {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
       const trimmedLine = line.trim();
-      
-      // 1. Detect Section Header Line `[section: Name]`
-      if (trimmedLine.startsWith('[section:') && trimmedLine.endsWith(']')) {
-        const sectionName = trimmedLine.substring(9, trimmedLine.length - 1).trim();
-        sectionsFound.push({ name: sectionName, lineIndex: lineIndex });
-        
+
+      if (isSectionHeaderLine(trimmedLine)) {
+        const sectionName = getSectionName(trimmedLine);
+        const sectionIndex = sectionsFound.length;
+        sectionsFound.push({ name: sectionName, index: sectionIndex, lineIndex });
+
         activeSectionBlock = document.createElement('div');
         activeSectionBlock.className = 'chord-section-block';
-        activeSectionBlock.id = `song-section-${sectionName.replace(/\s+/g, '-').toLowerCase()}`;
-        
+        activeSectionBlock.id = `song-section-${sectionIndex}`;
+
+        applySectionColorClass(activeSectionBlock, sectionName);
+
         const sectionHeader = document.createElement('div');
         sectionHeader.className = 'section-block-header';
         sectionHeader.textContent = sectionName;
         activeSectionBlock.appendChild(sectionHeader);
-        
-        songSheetContent.appendChild(activeSectionBlock);
-        return;
+        container.appendChild(activeSectionBlock);
+        continue;
       }
 
-      // If no active section yet, add to general space
-      const parentContainer = activeSectionBlock || songSheetContent;
+      const parentContainer = activeSectionBlock || container;
 
-      // 2. Empty Line
       if (trimmedLine === '') {
         parentContainer.appendChild(document.createElement('br'));
-        return;
+        continue;
       }
 
-      // 3. Process Line
-      // Check if it contains bracketed chords
+      // Interleaved OCR pair: chord row directly above lyric row (100% scan fidelity)
+      if (!line.includes('[') && isChordLine(line)) {
+        const nextLine = (lineIndex + 1 < lines.length) ? lines[lineIndex + 1] : null;
+        if (nextLine !== null && nextLine.trim() !== '' &&
+            !isSectionHeaderLine(nextLine.trim()) &&
+            !isChordLine(nextLine) && !nextLine.includes('[')) {
+          appendInterleavedPair(parentContainer, line, nextLine, keyOffset, songKey);
+          lineIndex++;
+          continue;
+        }
+      }
+
       if (line.includes('[') && line.includes(']')) {
         const parsed = splitBracketedLine(line);
         if (parsed.hasChords) {
-          const chordLineDiv = document.createElement('div');
-          chordLineDiv.className = 'chord-only-line';
-          chordLineDiv.textContent = transposeChordLine(parsed.chordLine, currentKeyOffset, song.key);
-          parentContainer.appendChild(chordLineDiv);
-        }
-        
-        const lyricLineDiv = document.createElement('div');
-        lyricLineDiv.className = 'lyric-only-line';
-        lyricLineDiv.textContent = parsed.lyricLine;
-        parentContainer.appendChild(lyricLineDiv);
-      } else {
-        if (isChordLine(line)) {
-          const chordLineDiv = document.createElement('div');
-          chordLineDiv.className = 'chord-only-line';
-          chordLineDiv.textContent = transposeChordLine(line, currentKeyOffset, song.key);
-          parentContainer.appendChild(chordLineDiv);
-        } else {
-          const lyricLineDiv = document.createElement('div');
-          lyricLineDiv.className = 'lyric-only-line';
-          lyricLineDiv.textContent = line;
-          parentContainer.appendChild(lyricLineDiv);
+          appendBracketedPair(parentContainer, parsed, keyOffset, songKey);
+          continue;
         }
       }
-    });
 
-    // Populate Section Quick Jump Menu (Screenshot 5)
-    renderSectionMenu(sectionsFound);
+      appendStandaloneLine(parentContainer, line, isChordLine(line), keyOffset, songKey);
+    }
+
+    return sectionsFound;
+  }
+
+  function appendInterleavedPair(parent, chordLine, lyricLine, keyOffset, songKey) {
+    const pair = document.createElement('div');
+    pair.className = 'chord-lyric-pair';
+
+    const chordDiv = document.createElement('div');
+    chordDiv.className = 'chord-only-line';
+    chordDiv.textContent = transposeChordLine(chordLine, keyOffset, songKey);
+
+    const lyricDiv = document.createElement('div');
+    lyricDiv.className = 'lyric-only-line';
+    lyricDiv.textContent = lyricLine;
+
+    pair.appendChild(chordDiv);
+    pair.appendChild(lyricDiv);
+    parent.appendChild(pair);
+  }
+
+  function appendBracketedPair(parent, parsed, keyOffset, songKey) {
+    const pair = document.createElement('div');
+    pair.className = 'chord-lyric-pair';
+
+    const chordDiv = document.createElement('div');
+    chordDiv.className = 'chord-only-line';
+    chordDiv.textContent = transposeChordLine(parsed.chordLine, keyOffset, songKey);
+    pair.appendChild(chordDiv);
+
+    const lyricText = parsed.lyricLine;
+    if (lyricText.trim() !== '' && !isProgressionOnlyLyric(lyricText)) {
+      const lyricDiv = document.createElement('div');
+      lyricDiv.className = 'lyric-only-line';
+      lyricDiv.textContent = lyricText;
+      pair.appendChild(lyricDiv);
+    }
+
+    parent.appendChild(pair);
+  }
+
+  function isProgressionOnlyLyric(text) {
+    return /^[\s|\-:()]+$/.test(text);
+  }
+
+  function appendStandaloneLine(parent, line, isChord, keyOffset, songKey) {
+    const lineDiv = document.createElement('div');
+    lineDiv.className = 'sheet-standalone-line ' + (isChord ? 'sheet-chord' : 'sheet-lyric');
+    lineDiv.textContent = isChord ? transposeChordLine(line, keyOffset, songKey) : line;
+    parent.appendChild(lineDiv);
   }
 
   // --- TRANSPOSE ENGINE MATHEMATICS ---
   function transposeChord(chord, offset, originalSongKey) {
     if (offset === 0) return chord;
-    
+
     // Handle slashed bass notes (e.g., D/F#) by transposing separately
     if (chord.includes('/')) {
       const parts = chord.split('/');
@@ -583,16 +1056,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Capture Root note (with # or b) and Chord Modifiers (e.g. C#maj9 -> root: C#, mod: maj9)
-    const chordPattern = /^([A-G][#b]?)(.*)$/;
+    const chordPattern = /^([A-Ga-g][#b]?)(.*)$/;
     const match = chord.match(chordPattern);
     if (!match) return chord;
 
-    const root = match[1];
+    const root = match[1].toUpperCase();
     const modifier = match[2];
 
     // Find current pitch value (index 0 - 11)
     let pitchIndex = KEY_SCALES.indexOf(root);
-    
+
     // Handle cases where sharp notes might be represented as flats or vice versa
     if (pitchIndex === -1) {
       // mapping aliases
@@ -602,8 +1075,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'F#': 'Gb', 'Gb': 'F#',
         'G#': 'Ab', 'Ab': 'G#',
         'A#': 'Bb', 'Bb': 'A#',
-        'B#': 'C',  'Cb': 'B',
-        'E#': 'F',  'Fb': 'E'
+        'B#': 'C', 'Cb': 'B',
+        'E#': 'F', 'Fb': 'E'
       };
       const alias = sharpFlatAliases[root];
       if (alias) {
@@ -625,14 +1098,17 @@ document.addEventListener('DOMContentLoaded', () => {
   function isChordLine(line) {
     if (!line.trim()) return false;
     if (/[ก-๙]/.test(line)) return false;
-    
-    const tokens = line.trim().split(/\s+/);
+
+    // Clean common section headers from the line to avoid misidentifying them as non-chords
+    let cleanLine = line.replace(/(?:\b(?:intro|instru|outro|solo|verse|chorus|bridge|pre-chorus|hook)\b)/gi, '');
+
+    const tokens = cleanLine.trim().split(/\s+/);
     let chordCount = 0;
     let otherCount = 0;
-    const chordRegex = /^[A-G][#b]?(?:m|maj|dim|aug|sus|add|7|9|11|13)*(?:\/[A-G][#b]?)?$/;
-    
+    const chordRegex = /^[A-G][#b]?(?:m|maj|dim|aug|sus|add|7|9|11|13)*(?:\/[A-G][#b]?)?$/i;
+
     tokens.forEach(token => {
-      const cleanToken = token.replace(/[|/\-\(\)\:\[\]]/g, '').trim();
+      const cleanToken = token.replace(/[|\-\(\)\:\[\]]/g, '').trim();
       if (!cleanToken) return;
       if (chordRegex.test(cleanToken)) {
         chordCount++;
@@ -640,33 +1116,39 @@ document.addEventListener('DOMContentLoaded', () => {
         otherCount++;
       }
     });
-    
+
     return chordCount > 0 && chordCount >= otherCount;
   }
 
   function splitBracketedLine(line) {
-    const segmentRegex = /(?:\[([^\]]+)\])?([^\[]*)/g;
+    const segmentRegex = /\[([^\]]+)\]|([^\[]+)/g;
     let match;
     let chordLine = '';
     let lyricLine = '';
-    
+
+    function getVisualLength(str) {
+      return str.replace(/[\u0e31\u0e34-\u0e3a\u0e47-\u0e4e]/g, '').length;
+    }
+
     while ((match = segmentRegex.exec(line)) !== null) {
       if (match[0] === '') break;
-      const chord = match[1] || '';
-      const text = match[2] || '';
-      
-      if (chord) {
-        const targetPos = lyricLine.length;
-        if (chordLine.length > targetPos) {
-          chordLine += ' ' + chord;
-        } else {
-          chordLine += ' '.repeat(targetPos - chordLine.length) + chord;
+
+      if (match[1] !== undefined) {
+        const chord = match[1];
+        const targetVisualPos = getVisualLength(lyricLine);
+        const currentChordVisualPos = getVisualLength(chordLine);
+
+        if (currentChordVisualPos < targetVisualPos) {
+          chordLine += ' '.repeat(targetVisualPos - currentChordVisualPos);
+        } else if (currentChordVisualPos > targetVisualPos) {
+          chordLine += ' ';
         }
+        chordLine += chord;
+      } else if (match[2] !== undefined) {
+        lyricLine += match[2];
       }
-      
-      lyricLine += text;
     }
-    
+
     return {
       hasChords: chordLine.trim().length > 0,
       chordLine,
@@ -676,26 +1158,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function transposeChordLine(line, offset, originalKey) {
     if (offset === 0) return line;
-    
-    const chordRegex = /\b([A-G][#b]?(?:m|maj|dim|aug|sus|add|7|9|11|13)*(?:\/[A-G][#b]?)?)\b/g;
+
+    const chordRegex = /\b([A-G][#b]?(?:m|maj|dim|aug|sus|add|7|9|11|13)*(?:\/[A-G][#b]?)?)(?=\s|\||\-|\(|\)|$)/gi;
     let match;
     const chords = [];
-    
+
     while ((match = chordRegex.exec(line)) !== null) {
       chords.push({
         chord: match[1],
         index: match.index
       });
     }
-    
+
     if (chords.length === 0) return line;
-    
+
     let result = '';
     let currentPos = 0;
-    
+
     chords.forEach(c => {
       const transposed = transposeChord(c.chord, offset, originalKey);
-      
+
       if (currentPos > c.index) {
         result += ' ';
         currentPos = result.length;
@@ -703,17 +1185,17 @@ document.addEventListener('DOMContentLoaded', () => {
         result += ' '.repeat(c.index - currentPos);
         currentPos = c.index;
       }
-      
+
       result += transposed;
       currentPos += transposed.length;
     });
-    
+
     const lastChord = chords[chords.length - 1];
     const originalLastChordEnd = lastChord.index + lastChord.chord.length;
     if (originalLastChordEnd < line.length) {
       result += line.substring(originalLastChordEnd);
     }
-    
+
     return result;
   }
 
@@ -725,27 +1207,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const gridContainer = document.getElementById('transpose-grid-container');
     gridContainer.innerHTML = '';
 
+    const match = song.key.match(/^([A-G][#b]?)(.*)$/);
+    const root = match ? match[1] : 'C';
+    const modifier = match ? match[2] : '';
+    const originalIndex = KEY_SCALES.indexOf(root);
+
     // Create 12 buttons inside transpose grid
     KEY_SCALES.forEach(key => {
       const keyIndex = KEY_SCALES.indexOf(key);
-      const originalIndex = KEY_SCALES.indexOf(song.key);
-      
+
       let offset = keyIndex - originalIndex;
       if (offset > 6) offset -= 12;
       if (offset <= -6) offset += 12;
 
       const offsetText = offset === 0 ? 'Ori' : (offset > 0 ? `+${offset}` : `${offset}`);
+      const keyName = key + modifier;
 
       const item = document.createElement('div');
       item.className = `key-grid-item ${currentKeyOffset === offset ? 'active' : ''}`;
       item.innerHTML = `
-        <div class="key-name">${key}</div>
+        <div class="key-name">${keyName}</div>
         <div class="key-offset">(${offsetText})</div>
       `;
 
       item.addEventListener('click', () => {
         currentKeyOffset = offset;
-        btnKeyTranspose.querySelector('.transpose-display-val').textContent = `${key} (${offsetText})`;
+        btnKeyTranspose.querySelector('.transpose-display-val').textContent = `${keyName} (${offsetText})`;
         renderChordSheet(song);
         closeAllModals();
       });
@@ -769,10 +1256,10 @@ document.addEventListener('DOMContentLoaded', () => {
     isScrolling = true;
     btnAutoscroll.classList.add('active');
     btnAutoscroll.querySelector('.btn-label').textContent = 'Stop Autoscroll';
-    
+
     // Display Speed Range Slider
     autoscrollSpeedControl.classList.remove('hidden');
-    
+
     lastScrollTime = performance.now();
     scrollFrameId = requestAnimationFrame(scrollStep);
   }
@@ -791,10 +1278,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const elapsed = timestamp - lastScrollTime;
     lastScrollTime = timestamp;
 
-    const mainContent = views.song;
-    // Calculate pixels to scroll based on speed slider value (pixels/second)
-    const scrollAmount = (autoscrollSpeed * elapsed) / 1000;
-    mainContent.scrollTop += scrollAmount;
+    const mainContent = document.querySelector('.app-main-content');
+    if (mainContent) {
+      // Calculate pixels to scroll based on speed slider value (pixels/second)
+      const scrollAmount = (autoscrollSpeed * elapsed) / 1000;
+      mainContent.scrollTop += scrollAmount;
+    }
 
     scrollFrameId = requestAnimationFrame(scrollStep);
   }
@@ -802,32 +1291,47 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- SECTION NAVIGATION JUMPER ---
   function renderSectionMenu(sections) {
     sectionsMenuList.innerHTML = '';
-    
+
     if (sections.length === 0) {
       btnSections.classList.add('hidden');
       return;
     }
-    
+
     btnSections.classList.remove('hidden');
-    
+
     // Populate label with first section name
     btnSections.querySelector('.section-val').textContent = sections[0].name;
 
-    sections.forEach(sec => {
+    sections.forEach((sec, index) => {
       const btn = document.createElement('button');
       btn.className = 'section-menu-item';
       btn.textContent = sec.name;
-      
+
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        
+
+        // Close dropdown
+        sectionsMenuList.style.display = 'none';
+
         // Find section element
-        const secElement = document.getElementById(`song-section-${sec.name.replace(/\s+/g, '-').toLowerCase()}`);
+        const secElement = document.getElementById(`song-section-${index}`);
         if (secElement) {
-          secElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const scrollContainer = document.querySelector('.app-main-content');
+          if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const elemRect = secElement.getBoundingClientRect();
+            const targetScrollTop = scrollContainer.scrollTop + (elemRect.top - containerRect.top) - 10;
+
+            scrollContainer.scrollTo({
+              top: targetScrollTop,
+              behavior: 'smooth'
+            });
+          } else {
+            secElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
           btnSections.querySelector('.section-val').textContent = sec.name;
-          
+
           // Temporary flash visual pulse to show user where they are
           secElement.classList.add('highlighted-section');
           setTimeout(() => {
@@ -862,10 +1366,10 @@ document.addEventListener('DOMContentLoaded', () => {
     isMetronomePlaying = true;
     btnMetronome.classList.add('active');
     btnMetronome.querySelector('.btn-label').textContent = 'Metronome (ON)';
-    
+
     currentBeat = 0;
     const intervalMs = (60 / metronomeBpm) * 1000;
-    
+
     playMetronomeTick(); // First beat immediately
     metronomeIntervalId = setInterval(playMetronomeTick, intervalMs);
   }
@@ -885,7 +1389,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    
+
     osc.connect(gain);
     gain.connect(audioCtx.destination);
 
@@ -925,7 +1429,7 @@ document.addEventListener('DOMContentLoaded', () => {
     playlists.push(newPlaylist);
     savePlaylistsToStorage();
     renderSidebar();
-    
+
     input.value = '';
     closeAllModals();
   }
@@ -935,6 +1439,7 @@ document.addEventListener('DOMContentLoaded', () => {
     container.innerHTML = '';
 
     playlists.forEach(pl => {
+      if (!pl.songs) pl.songs = [];
       const isSongInPlaylist = pl.songs.includes(songId);
       const row = document.createElement('div');
       row.style.display = 'flex';
@@ -951,6 +1456,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       row.querySelector('button').onclick = () => {
+        if (!pl.songs) pl.songs = [];
         if (isSongInPlaylist) {
           pl.songs = pl.songs.filter(id => id !== songId);
         } else {
@@ -1040,27 +1546,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    // Render Canvas QR Code (Uses public qrcode generator API for actual scanning!)
-    const canvas = document.getElementById('share-qr-canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0,0,150,150);
-    
-    // Draw canvas placeholder while loading API QR code image
-    ctx.fillStyle = 'var(--bg-input)';
-    ctx.fillRect(0,0,150,150);
-    ctx.fillStyle = 'var(--accent-color)';
-    ctx.font = '12px var(--font-body)';
-    ctx.textAlign = 'center';
-    ctx.fillText('กำลังสร้าง QR Code...', 75, 75);
-
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      ctx.clearRect(0,0,150,150);
-      ctx.drawImage(img, 0, 0, 150, 150);
-    };
-    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=ff5a1f&data=${encodeURIComponent(shareLink)}`;
-
     openModal('share');
   }
 
@@ -1083,11 +1568,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Simple HTML parser
         const parser = new DOMParser();
         const doc = parser.parseFromString(rawHTML, 'text/html');
-        
+
         // Try to extract title & artist
         const h1 = doc.querySelector('h1');
         if (h1) title = h1.textContent.trim();
-        
+
         const h2 = doc.querySelector('h2');
         if (h2) artist = h2.textContent.trim();
 
@@ -1104,7 +1589,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         // raw plain text paste
         chordsText = rawHTML;
-        
+
         // try to parse title/artist from first lines
         const lines = rawHTML.split('\n');
         if (lines.length > 0 && lines[0].includes(' - ')) {
@@ -1118,7 +1603,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Populate Admin editor fields with these extracted values!
-      const bracketedContent = chordsText;
+      const bracketedContent = convertInterleavedToBrackets(chordsText);
 
       // Populate Admin editor fields with these extracted values!
       adminTitle.value = title;
@@ -1140,80 +1625,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- OCR IMAGE TO CHORD EXTRACTOR ENGINE ---
+  function resetOcrUi() {
+    lastOcrScannedText = '';
+    if (ocrInsertRow) ocrInsertRow.style.display = 'none';
+    if (btnOcrInsert) btnOcrInsert.classList.remove('pulse-blink');
+  }
+
+  function showOcrInsertReady(normalizedText) {
+    lastOcrScannedText = normalizedText;
+    if (ocrInsertRow) ocrInsertRow.style.display = 'block';
+    if (btnOcrInsert) btnOcrInsert.classList.add('pulse-blink');
+  }
+
   async function handleOcrExtraction() {
-    const file = ocrImageInput.files[0];
+    const fileInput = ocrImageInput;
+    const file = fileInput ? fileInput.files[0] : null;
     if (!file) {
       alert('กรุณาเลือกไฟล์รูปภาพก่อนเริ่มสแกนคอร์ด!');
       return;
     }
 
-    if (ocrMode === 'local') {
-      await handleLocalOcr(file);
-    } else {
-      await handleGeminiOcr(file);
-    }
-  }
-
-  async function handleLocalOcr(file) {
-    const language = ocrLanguageSelect.value;
-
-    // Reset progress UI
-    ocrStatusContainer.style.display = 'block';
-    ocrResultPreviewContainer.style.display = 'none';
-    ocrStatusText.textContent = 'กำลังโหลดโมเดลสแกนข้อความ (OCR)...';
-    ocrPercentText.textContent = '0%';
-    ocrProgressBar.style.width = '0%';
-    btnOcrStart.disabled = true;
-
-    try {
-      // Run Tesseract recognition with layout spacing options
-      const result = await Tesseract.recognize(
-        file,
-        language,
-        {
-          logger: m => {
-            if (m && m.status === 'recognizing text') {
-              const progress = Math.round(m.progress * 100);
-              ocrStatusText.textContent = 'กำลังแปลงรูปภาพเป็นข้อความ...';
-              ocrPercentText.textContent = `${progress}%`;
-              ocrProgressBar.style.width = `${progress}%`;
-            } else if (m && m.status) {
-              let statusMsg = 'กำลังเตรียมตัวสแกน...';
-              if (m.status === 'loading tesseract core') statusMsg = 'กำลังโหลด Core สแกน...';
-              if (m.status === 'initializing api') statusMsg = 'กำลังเริ่มระบบ AI OCR...';
-              if (m.status === 'recognizing text') statusMsg = 'กำลังวิเคราะห์ข้อความ...';
-              ocrStatusText.textContent = statusMsg;
-            }
-          },
-          // Keep spacing characters preserved
-          preserve_interword_spaces: '1'
-        }
-      );
-
-      const rawText = result.data.text;
-      if (!rawText || !rawText.trim()) {
-        alert('ไม่สามารถถอดข้อความจากรูปภาพได้ กรุณาตรวจสอบว่ารูปภาพมีความชัดเจนและมีตัวหนังสือคอร์ด/เนื้อร้อง');
-        ocrStatusContainer.style.display = 'none';
-        btnOcrStart.disabled = false;
-        return;
-      }
-
-      // Leave chords and lyrics independent (interleaved format)
-      const convertedContent = rawText;
-
-      // Show result preview
-      ocrResultPreview.value = convertedContent;
-      ocrResultPreviewContainer.style.display = 'block';
-      ocrStatusText.textContent = 'สแกนรูปภาพสำเร็จ!';
-      ocrPercentText.textContent = '100%';
-      ocrProgressBar.style.width = '100%';
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการประมวลผล OCR: ' + err.message);
-      console.error('OCR Error:', err);
-      ocrStatusText.textContent = 'การประมวลผลล้มเหลว';
-    } finally {
-      btnOcrStart.disabled = false;
-    }
+    resetOcrUi();
+    await handleGeminiOcr(file);
   }
 
   async function handleGeminiOcr(file) {
@@ -1223,9 +1656,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Reset progress UI
     ocrStatusContainer.style.display = 'block';
-    ocrResultPreviewContainer.style.display = 'none';
+    if (ocrInsertRow) ocrInsertRow.style.display = 'none';
     ocrStatusText.textContent = 'กำลังส่งวิเคราะห์ด้วย Gemini AI...';
     ocrPercentText.textContent = '10%';
     ocrProgressBar.style.width = '10%';
@@ -1261,19 +1693,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 2. Call Gemini API endpoint (using gemini-2.5-flash)
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      
-      const promptText = `You are a professional music transcription assistant.
-Your task is to transcribe the lyrics and chords from the provided image of a chord sheet.
 
-CRITICAL RULES:
-1. You MUST transcribe the sheet exactly as a space-aligned plain text chord sheet.
-2. Put chords on their own lines, positioned with spaces EXACTLY above the lyric syllables where they are played, just like in the image.
-   Example:
-     C          G
-     คนที่เคยมีกัน ผูกพันจริงใจ
-3. Ensure 100% accurate transcription of chords (e.g. C, Dm, F#m, G/B), lyrics (Thai and English), spelling, and their relative positions. Do not mismatch or cluster the chords at the start of the line!
-4. Organize structural sections by prepending them with '[section: Intro]', '[section: Verse]', '[section: Chorus]', '[section: Solo]', or '[section: Outro]' on their own lines.
-5. Do NOT output markdown code blocks (like \`\`\`text or \`\`\`html), note explanations, or intro text. Just output the raw transcribed sheet.`;
+      const promptText = `You are a professional music transcription assistant.
+Your task is to transcribe the lyrics and chords from the provided image of a chord sheet, and identify the starting key and estimated tempo (BPM).
+
+CRITICAL LAYOUT RULES — match the printed sheet 100%:
+- Use TWO separate lines for each lyric phrase: Line 1 = chord row, Line 2 = lyric row directly underneath.
+- Preserve EXACT horizontal spacing with spaces so each chord sits above the correct syllable/word.
+- Do NOT embed chords in brackets on the same line as lyrics.
+- For chord-only rows (Intro, Outro, Instruments, progressions like "| G | Em |"), output a SINGLE line only.
+- Preserve ALL blank lines and indentation exactly as in the image.
+- Section labels on their own line as: [section: Intro], [section: Verse], etc.
+
+Example output format:
+[section: Verse]
+G        Em       C
+You know I can't smile without you
+| Gmaj9 | Em7 |
+
+You MUST return a JSON object with the exact structure:
+{
+  "key": "The starting key of the song (e.g., C, G, Am, F#m, Dm). If not explicitly written, analyze the chords to determine the key.",
+  "bpm": "The tempo/speed of the song in BPM as an integer. If not explicitly written, estimate it based on the song's style or known recordings (default to 90 if completely unknown).",
+  "transcription": "The full transcription using the two-line chord-above-lyric layout described above. Use \\n for newlines."
+}
+
+Ensure your response is valid JSON. Do NOT include markdown code block wrappers (like \`\`\`json) or extra text outside the JSON.`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -1308,7 +1753,7 @@ CRITICAL RULES:
       }
 
       const resData = await response.json();
-      
+
       let extractedText = '';
       if (resData.candidates && resData.candidates[0] && resData.candidates[0].content && resData.candidates[0].content.parts[0]) {
         extractedText = resData.candidates[0].content.parts[0].text;
@@ -1319,14 +1764,64 @@ CRITICAL RULES:
       }
 
       // Clean markdown tags if the AI returned them despite the prompt
-      extractedText = extractedText.replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
+      let cleanedText = extractedText.trim();
+      if (cleanedText.startsWith('```')) {
+        cleanedText = cleanedText.replace(/^```(?:json)?\n/, '').replace(/\n```$/, '');
+      }
 
-      // Show result preview
-      ocrResultPreview.value = extractedText.trim();
-      ocrResultPreviewContainer.style.display = 'block';
-      ocrStatusText.textContent = 'สแกนรูปภาพสำเร็จด้วย AI!';
+      let parsedJson = null;
+      try {
+        parsedJson = JSON.parse(cleanedText);
+      } catch (e) {
+        console.warn('Gemini response is not valid JSON, using regex fallback', e);
+      }
+
+      let transcriptionText = '';
+      let detectedKey = null;
+      let detectedBpm = null;
+
+      if (parsedJson) {
+        transcriptionText = parsedJson.transcription || '';
+        detectedKey = parsedJson.key || null;
+        detectedBpm = parseInt(parsedJson.bpm) || null;
+      } else {
+        // Fallback using Regex
+        transcriptionText = cleanedText;
+        
+        // Attempt to extract transcription block from JSON-like text
+        const transMatch = cleanedText.match(/"transcription"\s*:\s*"([\s\S]*?)"(?=\s*,\s*"|\s*})/);
+        if (transMatch) {
+          transcriptionText = transMatch[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\');
+        }
+
+        const keyMatch = cleanedText.match(/"key"\s*:\s*"([^"]+)"/);
+        if (keyMatch) {
+          detectedKey = keyMatch[1];
+        }
+
+        const bpmMatch = cleanedText.match(/"bpm"\s*:\s*"?(\d+)"?/);
+        if (bpmMatch) {
+          detectedBpm = parseInt(bpmMatch[1]);
+        }
+      }
+
+      // Store in state variables
+      ocrDetectedKey = detectedKey;
+      ocrDetectedBpm = detectedBpm;
+      
+      let statusMsg = 'สแกนรูปภาพสำเร็จด้วย AI!';
+      if (detectedKey || detectedBpm) {
+        statusMsg += ` (พบคีย์ตั้งต้น: ${detectedKey || 'ไม่ระบุ'}, ความเร็ว: ${detectedBpm || 'ไม่ระบุ'} BPM)`;
+      }
+      ocrStatusText.textContent = statusMsg;
       ocrPercentText.textContent = '100%';
       ocrProgressBar.style.width = '100%';
+
+      const normalized = normalizeOcrContentForDisplay(transcriptionText.trim());
+      showOcrInsertReady(normalized);
     } catch (err) {
       clearInterval(progressInterval);
       alert('การแปลงคอร์ดด้วย Gemini AI ล้มเหลว: ' + err.message);
@@ -1337,40 +1832,119 @@ CRITICAL RULES:
     }
   }
 
-  function insertOcrContentToEditor() {
-    const text = ocrResultPreview.value;
-    if (!text.trim()) return;
+  function insertOcrContentDirectly(text) {
+    if (!text || !text.trim()) return;
 
     // Ask user for confirmation
     if (adminContent.value.trim() && !confirm('มีเนื้อหาเดิมอยู่ในตัวแก้ไขอยู่แล้ว ต้องการเขียนทับด้วยข้อมูลจาก OCR ใช่หรือไม่?')) {
       return;
     }
 
-    adminContent.value = text;
+    // Both Local OCR and AI scan: preserve exact scanned layout (100% like the image)
+    adminContent.value = normalizeOcrContentForDisplay(text);
+    
+    if (ocrDetectedKey) {
+      const keyOptionExists = Array.from(adminKey.options).some(opt => opt.value === ocrDetectedKey);
+      if (!keyOptionExists) {
+        const newOpt = document.createElement('option');
+        newOpt.value = ocrDetectedKey;
+        newOpt.textContent = ocrDetectedKey;
+        adminKey.appendChild(newOpt);
+      }
+      adminKey.value = ocrDetectedKey;
+    }
+
+    if (ocrDetectedBpm) {
+      adminTempo.value = ocrDetectedBpm;
+    }
+
     updateAdminPreview();
-    alert('นำข้อมูล OCR เข้าสู่ตัวแก้ไขเรียบร้อยแล้ว!');
+    ocrStatusContainer.style.display = 'none';
+    ocrImageInput.value = '';
+    resetOcrUi();
+    alert('นำข้อมูล OCR และวิเคราะห์คีย์/ความเร็วเพลงเข้าสู่ตัวแก้ไขเรียบร้อยแล้ว!');
+  }
+
+  /**
+   * Normalize OCR/AI output to interleaved chord-row + lyric-row layout for faithful display.
+   * Bracket-inline lines (legacy AI format) are split into two rows without re-merging spacing.
+   */
+  function normalizeOcrContentForDisplay(text) {
+    if (!text || !text.trim()) return text;
+
+    const lines = text.split('\n');
+    const output = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (trimmed === '') {
+        output.push(line);
+        continue;
+      }
+
+      if (isSectionHeaderLine(trimmed)) {
+        output.push(line);
+        continue;
+      }
+
+      // Bracket-inline line → split to chord row + lyric row (same as render preview)
+      if (line.includes('[') && line.includes(']')) {
+        const parsed = splitBracketedLine(line);
+        if (parsed.hasChords) {
+          output.push(parsed.chordLine);
+          if (parsed.lyricLine.trim() !== '' && !isProgressionOnlyLyric(parsed.lyricLine)) {
+            output.push(parsed.lyricLine);
+          }
+          continue;
+        }
+      }
+
+      output.push(line);
+    }
+
+    return output.join('\n');
   }
 
   // --- THE MERGING CONVERTER ALGORITHM (Interleaved -> Bracketed) ---
   function convertInterleavedToBrackets(text) {
     const lines = text.split('\n');
     const processedLines = [];
-    
-    // Core helper: detects if line contains only chords and spacings (Intro chord rows, Solo progressions)
-    function isChordLine(line) {
-      if (!line.trim()) return false;
-      
-      // Chords lines only contain chord characters, bars |, slashes /, numbers and spaces
-      // No standard long lyrics keywords (checking english length, and Thai block bounds)
-      const sanitized = line.replace(/[A-G][#b]?(m|maj|dim|aug|sus|add|7|9|11|13)*(\/[A-G][#b]?)?/g, '')
-                            .replace(/[\s\d|/\-\(\)\:\[\]]/g, '');
-                            
-      return sanitized.length === 0;
-    }
+
+
+
+    const sectionKeywords = ['intro', 'hook', 'verse', 'chorus', 'solo', 'outro', 'outtro', 'instruments', 'instrumental', 'bridge', 'อินโทร', 'ฮุค', 'ท่อนร้อง', 'ดนตรี'];
 
     for (let i = 0; i < lines.length; i++) {
-      const current = lines[i];
+      let current = lines[i];
       const next = (i + 1 < lines.length) ? lines[i + 1] : null;
+
+      const trimmed = current.trim();
+      let matchedKeyword = null;
+      for (const kw of sectionKeywords) {
+        const regex = new RegExp('^(' + kw + ')(?:[:\\s\\d\\-]||$)', 'i');
+        const match = trimmed.match(regex);
+        if (match) {
+          matchedKeyword = match[1];
+          break;
+        }
+      }
+
+      if (matchedKeyword) {
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          // Already in brackets, keep as-is
+        } else {
+          const rest = trimmed.slice(matchedKeyword.length).trim();
+          const cleanKeyword = matchedKeyword.trim();
+          if (rest === '' || /^[0-9]+$/.test(rest)) {
+            current = `[${trimmed}]`;
+          } else {
+            processedLines.push(`[${cleanKeyword}]`);
+            current = rest.replace(/^[:\-\s/|]+/, '');
+          }
+        }
+      }
 
       if (isChordLine(current)) {
         // If it's a chord line and has a lyric line directly underneath
@@ -1404,38 +1978,60 @@ CRITICAL RULES:
     while ((match = regex.exec(chordLine)) !== null) {
       chords.push({
         chord: match[1],
-        index: match.index
+        visualCol: match.index // index in chordLine is exactly its visual column
       });
     }
 
     if (chords.length === 0) return lyricLine;
 
-    // Reconstruct lyric line inserting brackets
-    let result = '';
-    let lyricPtr = 0;
-    
-    // Sort chords left-to-right
-    chords.sort((a, b) => a.index - b.index);
-
-    chords.forEach(c => {
-      // Add text leading up to chord position
-      if (c.index > lyricPtr && lyricPtr < lyricLine.length) {
-        result += lyricLine.substring(lyricPtr, c.index);
-        lyricPtr = c.index;
+    // Helper to map visual column to char index in string
+    function getCharIndexAtVisualCol(str, targetVisualCol) {
+      let currentVisualCol = 0;
+      let charIndex = 0;
+      const combiningRegex = /[\u0e31\u0e34-\u0e3a\u0e47-\u0e4e]/;
+      
+      while (charIndex < str.length && currentVisualCol < targetVisualCol) {
+        const char = str[charIndex];
+        if (!combiningRegex.test(char)) {
+          currentVisualCol++;
+        }
+        charIndex++;
       }
       
+      while (charIndex < str.length && combiningRegex.test(str[charIndex])) {
+        charIndex++;
+      }
+      
+      return charIndex;
+    }
+
+    // Sort chords left-to-right
+    chords.sort((a, b) => a.visualCol - b.visualCol);
+
+    let result = '';
+    let lyricCharPtr = 0;
+
+    chords.forEach(c => {
+      const targetCharIndex = getCharIndexAtVisualCol(lyricLine, c.visualCol);
+      
+      // Add text leading up to chord position
+      if (targetCharIndex > lyricCharPtr && lyricCharPtr < lyricLine.length) {
+        result += lyricLine.substring(lyricCharPtr, targetCharIndex);
+        lyricCharPtr = targetCharIndex;
+      }
+
       // Insert brackets chord
       result += `[${c.chord}]`;
-      
+
       // If chord is placed beyond current lyrics bounds, pad with spacing
-      if (c.index >= lyricLine.length && lyricPtr >= lyricLine.length) {
+      if (targetCharIndex >= lyricLine.length && lyricCharPtr >= lyricLine.length) {
         result += ' ';
       }
     });
 
     // Add remaining lyrics text
-    if (lyricPtr < lyricLine.length) {
-      result += lyricLine.substring(lyricPtr);
+    if (lyricCharPtr < lyricLine.length) {
+      result += lyricLine.substring(lyricCharPtr);
     }
 
     return result;
@@ -1451,38 +2047,26 @@ CRITICAL RULES:
   function openAdminCreator() {
     activeAdminSongId = null;
     uploadedImageBase64 = null;
-    
+
     adminTitle.value = '';
     adminArtist.value = '';
     adminKey.value = 'C';
     adminTempo.value = '90';
-    adminContent.value = `[section: Intro]
-| [C] | [Am] | [F] | [G] |
+    adminContent.value = '';
 
-[section: Verse]
-[C] เนื้อเพลงท่อนร้อง [Am] คอร์ดวางในวงเล็บสี่เหลี่ยม
-[F] จัดตำแหน่งและคำร้อง [G] ได้อย่างอิสระ`;
-    
-    adminImageUpload.value = '';
-    
-    // Reset OCR UI
+    if (adminImageUpload) adminImageUpload.value = '';
+
     ocrImageInput.value = '';
     ocrStatusContainer.style.display = 'none';
-    ocrResultPreviewContainer.style.display = 'none';
-    ocrResultPreview.value = '';
     btnOcrStart.disabled = false;
+    ocrDetectedKey = null;
+    ocrDetectedBpm = null;
+    resetOcrUi();
 
-    // Sync OCR tab UI with current state
-    if (ocrMode === 'local') {
-      tabOcrLocal.classList.add('active');
-      tabOcrAi.classList.remove('active');
-      ocrLocalParams.style.display = 'block';
-      ocrAiParams.style.display = 'none';
-    } else {
-      tabOcrAi.classList.add('active');
-      tabOcrLocal.classList.remove('active');
-      ocrLocalParams.style.display = 'none';
-      ocrAiParams.style.display = 'block';
+    // Hide delete button for new songs
+    const btnAdminDeleteCreator = document.getElementById('btn-admin-delete');
+    if (btnAdminDeleteCreator) {
+      btnAdminDeleteCreator.style.display = 'none';
     }
 
     updateAdminPreview();
@@ -1497,27 +2081,20 @@ CRITICAL RULES:
     adminArtist.value = song.artist || '';
     adminKey.value = song.key || 'C';
     adminContent.value = song.content || '';
-    
-    adminImageUpload.value = '';
 
-    // Reset OCR UI
+    if (adminImageUpload) adminImageUpload.value = '';
+
     ocrImageInput.value = '';
     ocrStatusContainer.style.display = 'none';
-    ocrResultPreviewContainer.style.display = 'none';
-    ocrResultPreview.value = '';
     btnOcrStart.disabled = false;
+    ocrDetectedKey = null;
+    ocrDetectedBpm = null;
+    resetOcrUi();
 
-    // Sync OCR tab UI with current state
-    if (ocrMode === 'local') {
-      tabOcrLocal.classList.add('active');
-      tabOcrAi.classList.remove('active');
-      ocrLocalParams.style.display = 'block';
-      ocrAiParams.style.display = 'none';
-    } else {
-      tabOcrAi.classList.add('active');
-      tabOcrLocal.classList.remove('active');
-      ocrLocalParams.style.display = 'none';
-      ocrAiParams.style.display = 'block';
+    // Show delete button when editing an existing song
+    const btnAdminDeleteEditor = document.getElementById('btn-admin-delete');
+    if (btnAdminDeleteEditor) {
+      btnAdminDeleteEditor.style.display = '';
     }
 
     updateAdminPreview();
@@ -1553,8 +2130,9 @@ CRITICAL RULES:
     const header = document.createElement('div');
     header.style.marginBottom = '20px';
     header.innerHTML = `
-      <h3 style="font-size:22px; font-family:var(--font-display); font-weight:700;">${escapeHtml(tempSong.title)}</h3>
-      <p style="color:var(--text-secondary); margin-bottom:8px;">โดย ${escapeHtml(tempSong.artist)}</p>
+      <h3 style="font-size:22px; font-family:var(--font-display); font-weight:700; margin-bottom:8px;">
+        ${escapeHtml(tempSong.title)} : <span style="font-size:16px; color:var(--text-secondary); font-weight:500;">${escapeHtml(tempSong.artist)}</span>
+      </h3>
       <span class="card-key">${tempSong.key}</span>
       <span style="font-size:12px; margin-left:10px; color:var(--text-muted);">♩ ${tempSong.tempo}</span>
     `;
@@ -1564,91 +2142,27 @@ CRITICAL RULES:
     sheet.className = 'chord-sheet-container';
     sheet.style.padding = '16px';
     sheet.style.fontSize = '14px';
-    sheet.style.lineHeight = '2';
     sheet.id = 'admin-sheet-preview-scroller';
 
-    // Simple Render preview (Key offset = 0)
-    sheet.style.fontFamily = 'var(--font-mono, monospace)';
-    sheet.style.whiteSpace = 'pre-wrap';
-
-    const lines = tempSong.content.split('\n');
-    let activeBlock = null;
-
-    lines.forEach(line => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('[section:') && trimmed.endsWith(']')) {
-        const sec = trimmed.substring(9, trimmed.length - 1).trim();
-        activeBlock = document.createElement('div');
-        activeBlock.className = 'chord-section-block';
-        activeBlock.style.paddingLeft = '10px';
-        const bh = document.createElement('div');
-        bh.className = 'section-block-header';
-        bh.style.fontSize = '11px';
-        bh.textContent = sec;
-        activeBlock.appendChild(bh);
-        sheet.appendChild(activeBlock);
-        return;
-      }
-
-      const parent = activeBlock || sheet;
-
-      if (trimmed === '') {
-        parent.appendChild(document.createElement('br'));
-        return;
-      }
-
-      // Check if it contains bracketed chords
-      if (line.includes('[') && line.includes(']')) {
-        const parsed = splitBracketedLine(line);
-        if (parsed.hasChords) {
-          const chordLineDiv = document.createElement('div');
-          chordLineDiv.className = 'chord-only-line';
-          chordLineDiv.style.fontFamily = 'var(--font-mono, monospace)';
-          chordLineDiv.style.whiteSpace = 'pre';
-          chordLineDiv.textContent = parsed.chordLine;
-          parent.appendChild(chordLineDiv);
-        }
-        
-        const lyricLineDiv = document.createElement('div');
-        lyricLineDiv.className = 'lyric-only-line';
-        lyricLineDiv.style.fontFamily = 'var(--font-mono, monospace)';
-        lyricLineDiv.textContent = parsed.lyricLine;
-        parent.appendChild(lyricLineDiv);
-      } else {
-        if (isChordLine(line)) {
-          const chordLineDiv = document.createElement('div');
-          chordLineDiv.className = 'chord-only-line';
-          chordLineDiv.style.fontFamily = 'var(--font-mono, monospace)';
-          chordLineDiv.style.whiteSpace = 'pre';
-          chordLineDiv.textContent = line;
-          parent.appendChild(chordLineDiv);
-        } else {
-          const lyricLineDiv = document.createElement('div');
-          lyricLineDiv.className = 'lyric-only-line';
-          lyricLineDiv.style.fontFamily = 'var(--font-mono, monospace)';
-          lyricLineDiv.textContent = line;
-          parent.appendChild(lyricLineDiv);
-        }
-      }
-    });
+    renderSheetLines(sheet, tempSong.content, 0, tempSong.key);
 
     previewContainer.appendChild(sheet);
   }
 
   function saveAdminSong() {
-    const title = adminTitle.value.trim();
-    const artist = adminArtist.value.trim();
+    const title = adminTitle ? adminTitle.value.trim() : '';
+    const artist = adminArtist ? adminArtist.value.trim() : '';
     if (!title || !artist) {
       alert('กรุณากรอกชื่อเพลงและชื่อศิลปิน!');
       return;
     }
 
-    const key = adminKey.value.trim();
-    const tempo = parseInt(adminTempo.value) || 90;
-    const timeSignature = adminTime.value.trim();
-    const duration = adminDuration.value.trim();
-    const tags = adminTags.value.split(',').map(t => t.trim()).filter(t => t);
-    const content = adminContent.value;
+    const key = adminKey ? adminKey.value.trim() : 'C';
+    const tempo = adminTempo ? (parseInt(adminTempo.value) || 90) : 90;
+    const timeSignature = adminTime ? adminTime.value.trim() : "4/4";
+    const duration = adminDuration ? adminDuration.value.trim() : "0:00";
+    const tags = adminTags ? adminTags.value.split(',').map(t => t.trim()).filter(t => t) : [];
+    const content = adminContent ? adminContent.value : '';
 
     if (activeAdminSongId) {
       // Edit existing
@@ -1656,9 +2170,12 @@ CRITICAL RULES:
       if (songIndex !== -1) {
         songs[songIndex] = {
           ...songs[songIndex],
-          title, artist, key, tempo, timeSignature, duration, tags, content,
+          title, artist, key, tempo, content,
           imageBase64: uploadedImageBase64
         };
+        if (adminTime) songs[songIndex].timeSignature = timeSignature;
+        if (adminDuration) songs[songIndex].duration = duration;
+        if (adminTags) songs[songIndex].tags = tags;
       }
     } else {
       // Create new
@@ -1673,21 +2190,27 @@ CRITICAL RULES:
     saveSongsToStorage();
     renderSidebar();
     renderLibrary();
-    
+
     // Redirect to active song
-    const savedId = activeAdminSongId || songs[songs.length - 1].id;
-    showSong(savedId);
+    const savedId = activeAdminSongId || (songs.length > 0 ? songs[songs.length - 1].id : null);
+    if (savedId) {
+      showSong(savedId);
+    } else {
+      showView('library');
+    }
   }
 
   function deleteSong(songId) {
     if (!confirm('คุณแน่ใจว่าต้องการลบเพลงนี้ออกจาระบบอย่างถาวรใช่หรือไม่?')) return;
-    
+
     songs = songs.filter(s => s.id !== songId);
     saveSongsToStorage();
-    
+
     // Remove from playlists
     playlists.forEach(pl => {
-      pl.songs = pl.songs.filter(id => id !== songId);
+      if (pl.songs) {
+        pl.songs = pl.songs.filter(id => id !== songId);
+      }
     });
     savePlaylistsToStorage();
 
@@ -1699,7 +2222,7 @@ CRITICAL RULES:
 
   // --- IMPORT SONGS FROM URL HASH ON LAUNCH ---
   window.addEventListener('hashchange', checkUrlImport);
-  
+
   function checkUrlImport() {
     const hash = window.location.hash;
     if (hash.startsWith('#import=')) {
@@ -1707,29 +2230,109 @@ CRITICAL RULES:
         const compressed = hash.substring(8);
         const songString = decodeURIComponent(escape(atob(compressed)));
         const importedSong = JSON.parse(songString);
-        
+
         if (importedSong && importedSong.id) {
-          // Confirm import
-          if (confirm(`พบข้อมูลเพลงแชร์ร่วมกัน [${importedSong.title} - ${importedSong.artist}] ต้องการนำเข้าสู่คลังเพลงท้องถิ่นใช่หรือไม่?`)) {
-            // Check if already exists
+          const urlParams = new URLSearchParams(window.location.search);
+          const isDownloadMode = urlParams.get('download') === 'true';
+
+          if (isDownloadMode) {
+            // Import silently
             const exists = songs.find(s => s.id === importedSong.id);
             if (exists) {
               songs = songs.filter(s => s.id !== importedSong.id);
             }
             songs.push(importedSong);
             saveSongsToStorage();
-            
-            // clear hash to prevent loops
-            window.location.hash = '';
-            
+
+            // Clean address bar to prevent infinite loops on reload
+            try {
+              window.history.replaceState(null, '', window.location.pathname);
+            } catch (e) {
+              window.location.hash = '';
+            }
+
             renderSidebar();
             renderLibrary();
             showSong(importedSong.id);
+
+            // Trigger auto download of PNG
+            triggerAutoDownloadPng(importedSong);
+          } else {
+            // Confirm import
+            if (confirm(`พบข้อมูลเพลงแชร์ร่วมกัน [${importedSong.title} - ${importedSong.artist}] ต้องการนำเข้าสู่คลังเพลงท้องถิ่นใช่หรือไม่?`)) {
+              const exists = songs.find(s => s.id === importedSong.id);
+              if (exists) {
+                songs = songs.filter(s => s.id !== importedSong.id);
+              }
+              songs.push(importedSong);
+              saveSongsToStorage();
+
+              window.location.hash = '';
+
+              renderSidebar();
+              renderLibrary();
+              showSong(importedSong.id);
+            }
           }
         }
       } catch (err) {
         console.error('URL parse failed', err);
       }
+    }
+  }
+
+  async function triggerAutoDownloadPng(song) {
+    // Create beautiful loader overlay matching premium theme
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100vw';
+    overlay.style.height = '100vh';
+    overlay.style.backgroundColor = 'rgba(18, 18, 18, 0.95)';
+    overlay.style.backdropFilter = 'blur(10px)';
+    overlay.style.display = 'flex';
+    overlay.style.flexDirection = 'column';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.zIndex = '9999';
+    overlay.style.color = '#ffffff';
+    overlay.style.fontFamily = 'var(--font-display)';
+
+    overlay.innerHTML = `
+      <div style="font-size: 40px; margin-bottom: 20px; animation: spin 2s linear infinite;">⏳</div>
+      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 8px; color: var(--accent-color);">กำลังดาวน์โหลดคอร์ดเพลง...</h2>
+      <p style="color: var(--text-secondary); font-size: 14px;">ระบบกำลังสร้างไฟล์รูปภาพ PNG สำหรับเพลง "${escapeHtml(song.title)}"</p>
+      <style>
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+    document.body.appendChild(overlay);
+
+    // Wait a brief moment for the song sheet to render completely
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    try {
+      const container = document.querySelector('.song-view-container');
+      const canvasObj = await html2canvas(container, {
+        backgroundColor: '#121212',
+        scale: 2
+      });
+      const dataUrl = canvasObj.toDataURL('image/png');
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataUrl);
+      downloadAnchor.setAttribute("download", `${song.id}-chord-sheet.png`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (err) {
+      console.error('Auto Export PNG failed:', err);
+      alert('เกิดข้อผิดพลาดในการดาวน์โหลดรูปภาพโดยอัตโนมัติ');
+    } finally {
+      overlay.remove();
     }
   }
 
@@ -1746,7 +2349,7 @@ CRITICAL RULES:
         document.getElementById('add-playlist-picker-list').classList.add('hidden');
         document.getElementById('modal-playlist').querySelector('.modal-title').textContent = 'สร้างลิสต์เพลงใหม่';
       }
-      
+
       m.classList.add('active');
     }
   }
@@ -1757,14 +2360,7 @@ CRITICAL RULES:
     });
   }
 
-  // --- UTILITIES ---
-  function isChordLine(line) {
-    if (!line.trim()) return false;
-    let sanitized = line.replace(/(?:\b(?:intro|instru|outro|solo|verse|chorus|bridge|pre-chorus|hook)\b)/gi, '');
-    sanitized = sanitized.replace(/[A-G][#b]?(m|maj|dim|aug|sus|add|7|9|11|13)*(\/[A-G][#b]?)?/g, '')
-                          .replace(/[\s\d|/\-\(\)\:\[\]]/g, '');
-    return sanitized.length === 0;
-  }
+
 
   function escapeHtml(str) {
     if (!str) return '';
@@ -1791,11 +2387,15 @@ CRITICAL RULES:
     const song = songs.find(s => s.id === currentSongId);
     if (!song) return;
 
-    const originalIndex = KEY_SCALES.indexOf(song.key);
+    const match = song.key.match(/^([A-G][#b]?)(.*)$/);
+    const root = match ? match[1] : 'C';
+    const modifier = match ? match[2] : '';
+    const originalIndex = KEY_SCALES.indexOf(root);
+
     let targetIndex = (originalIndex + currentKeyOffset) % 12;
     if (targetIndex < 0) targetIndex += 12;
 
-    const targetKey = KEY_SCALES[targetIndex];
+    const targetKey = KEY_SCALES[targetIndex] + modifier;
     const offsetText = currentKeyOffset === 0 ? 'Ori' : (currentKeyOffset > 0 ? `+${currentKeyOffset}` : `${currentKeyOffset}`);
 
     btnKeyTranspose.querySelector('.transpose-display-val').textContent = `${targetKey} (${offsetText})`;
@@ -1809,10 +2409,14 @@ CRITICAL RULES:
 
   function renderTagManagerList() {
     tagManagerList.innerHTML = '';
-    
+
     // Combine all tags from songs and custom tags
     const allTags = new Set();
-    songs.forEach(s => s.tags.forEach(t => allTags.add(t)));
+    songs.forEach(s => {
+      if (s && s.tags && Array.isArray(s.tags)) {
+        s.tags.forEach(t => allTags.add(t));
+      }
+    });
     customTags.forEach(t => allTags.add(t));
 
     if (allTags.size === 0) {
@@ -1837,7 +2441,7 @@ CRITICAL RULES:
       `;
 
       const btns = row.querySelectorAll('button');
-      
+
       // Rename category
       btns[0].onclick = () => {
         const newName = prompt('แก้ไขชื่อหมวดหมู่:', tag);
@@ -1855,7 +2459,7 @@ CRITICAL RULES:
           // 2. Rename in custom tags
           if (customTags.includes(tag)) {
             customTags = customTags.map(t => t === tag ? trimmed : t);
-            localStorage.setItem('pakjer_custom_tags', JSON.stringify(customTags));
+            saveCustomTagsToStorage();
           }
 
           renderTagManagerList();
@@ -1875,7 +2479,7 @@ CRITICAL RULES:
 
           // 2. Filter out from custom tags
           customTags = customTags.filter(t => t !== tag);
-          localStorage.setItem('pakjer_custom_tags', JSON.stringify(customTags));
+          saveCustomTagsToStorage();
 
           if (selectedTag === tag) selectedTag = null; // Reset selection
 
@@ -1904,8 +2508,8 @@ CRITICAL RULES:
     }
 
     customTags.push(val);
-    localStorage.setItem('pakjer_custom_tags', JSON.stringify(customTags));
-    
+    saveCustomTagsToStorage();
+
     tagManagerNewInput.value = '';
     renderTagManagerList();
     renderSidebar();

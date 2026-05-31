@@ -1,5 +1,5 @@
 /* PakJer Premium CSS Design System & Theme Styles */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   /* Theme Colors */
@@ -8,23 +8,27 @@
   --bg-card: #222222;
   --bg-card-hover: #2b2b2b;
   --bg-input: #2d2d2d;
-  
+
   --accent-color: #ff5a1f;
   --accent-hover: #ff7038;
   --accent-glow: rgba(255, 90, 31, 0.15);
   --accent-glow-strong: rgba(255, 90, 31, 0.4);
-  
+
   --chord-color: #ff5a1f;
+  --chord-color-default: #ff5a1f;
+  --chord-color-intro-outro: #ffffff;
+  --chord-color-instru: #ffcc00;
   --text-primary: #ffffff;
   --text-secondary: #aaaaaa;
   --text-muted: #666666;
   --border-color: rgba(255, 255, 255, 0.08);
   --border-active: rgba(255, 90, 31, 0.5);
-  
+
   /* Fonts */
   --font-display: 'Outfit', 'Inter', sans-serif;
   --font-body: 'Inter', sans-serif;
-  
+  --font-mono: 'Noto Sans Mono', 'Courier New', Courier, monospace;
+
   /* Transitions */
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -35,7 +39,7 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.5);
   --shadow-accent: 0 4px 14px rgba(255, 90, 31, 0.25);
-  
+
   /* Font size scalar */
   --font-scale: 1;
 }
@@ -58,7 +62,10 @@ body {
   flex-direction: column;
 }
 
-input, button, select, textarea {
+input,
+button,
+select,
+textarea {
   font-family: inherit;
   color: inherit;
 }
@@ -208,7 +215,8 @@ input, button, select, textarea {
   color: var(--accent-color);
 }
 
-.playlist-list, .tag-cloud {
+.playlist-list,
+.tag-cloud {
   list-style: none;
   display: flex;
   flex-direction: column;
@@ -229,7 +237,8 @@ input, button, select, textarea {
   color: var(--text-secondary);
 }
 
-.playlist-item:hover, .playlist-item.active {
+.playlist-item:hover,
+.playlist-item.active {
   background-color: var(--bg-input);
   color: var(--text-primary);
 }
@@ -263,7 +272,8 @@ input, button, select, textarea {
   transition: var(--transition-fast);
 }
 
-.tag-chip:hover, .tag-chip.active {
+.tag-chip:hover,
+.tag-chip.active {
   border-color: var(--accent-color);
   background-color: var(--accent-glow);
   color: var(--text-primary);
@@ -314,8 +324,7 @@ input, button, select, textarea {
   transition: var(--transition-normal);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  height: 180px;
+  gap: 12px;
 }
 
 .song-card:hover {
@@ -351,26 +360,17 @@ input, button, select, textarea {
   text-overflow: ellipsis;
 }
 
+.song-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .card-artist {
   color: var(--text-secondary);
   font-size: 14px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   font-weight: 500;
-}
-
-.card-tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: auto;
-}
-
-.card-tag {
-  font-size: 11px;
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: var(--text-secondary);
 }
 
 .card-footer {
@@ -381,7 +381,7 @@ input, button, select, textarea {
   color: var(--text-muted);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   padding-top: 10px;
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .card-key {
@@ -393,6 +393,78 @@ input, button, select, textarea {
 }
 
 /* SONG VIEWER SECTION */
+.song-view-panel {
+  position: relative;
+  max-width: 100%;
+}
+
+/* ปุ่มนำทาง sticky — เลื่อนตามเมื่อ scroll เนื้อหา */
+.song-nav-sticky-rail {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 40;
+  pointer-events: none;
+  width: 100%;
+}
+
+.song-nav-btn {
+  pointer-events: auto;
+  position: absolute;
+  border: 1px solid var(--border-color);
+  background: rgba(28, 28, 28, 0.94);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-md);
+}
+
+.song-nav-btn:hover:not(:disabled) {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: var(--bg-card-hover);
+}
+
+.song-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.song-nav-close {
+  top: 8px;
+  right: 8px;
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.song-nav-side {
+  top: 50vh;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 72px;
+  border-radius: 14px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.song-nav-prev {
+  left: 0;
+}
+
+.song-nav-next {
+  right: 0;
+}
+
 .song-view-container {
   display: flex;
   flex-direction: column;
@@ -421,7 +493,7 @@ input, button, select, textarea {
   right: 0;
   width: 250px;
   height: 100%;
-  background-image: 
+  background-image:
     linear-gradient(60deg, transparent 50%, rgba(255, 90, 31, 0.03) 50%),
     linear-gradient(-60deg, transparent 50%, rgba(255, 90, 31, 0.02) 50%);
   background-size: 20px 100%, 30px 100%;
@@ -536,7 +608,7 @@ input, button, select, textarea {
   color: var(--accent-color);
 }
 
-/* Scale & Options toolbar (Screenshot 2: 60% 100% 150%) */
+/* Scale & Options toolbar (Screenshot 2: 80% 100% 120%) */
 .scale-toolbar {
   display: flex;
   align-items: center;
@@ -700,9 +772,52 @@ input, button, select, textarea {
   padding: 32px;
   box-shadow: var(--shadow-md);
   position: relative;
-  overflow: hidden;
+  overflow-x: auto;
+  font-family: var(--font-mono);
   font-size: calc(16px * var(--font-scale));
-  line-height: 1.5;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* หน้าคอร์ดเพลง: บล็อกอยู่กลางกล่องชีต เนื้อหาชิดซ้ายในรูปแบบเดิม */
+#song-sheet-content.chord-sheet-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#song-sheet-content .chord-section-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  align-self: center;
+}
+
+#song-sheet-content .chord-lyric-pair,
+#song-sheet-content .sheet-standalone-line {
+  width: fit-content;
+  max-width: 100%;
+  align-self: center;
+  text-align: left;
+}
+
+#song-sheet-content .chord-section-block .chord-lyric-pair,
+#song-sheet-content .chord-section-block .sheet-standalone-line {
+  align-self: flex-start;
+}
+
+#song-sheet-content .section-block-header {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  align-self: stretch;
+}
+
+#song-sheet-content .section-block-header::after {
+  display: none;
 }
 
 .chord-section-block {
@@ -778,17 +893,77 @@ input, button, select, textarea {
   white-space: pre;
 }
 
-/* Chord Only Line for Intros & Instrumentals */
+/* OCR-faithful chord/lyric pairs — preserve exact scanned spacing */
+.chord-lyric-pair {
+  display: block;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.chord-lyric-pair:last-child {
+  margin-bottom: 0;
+}
+
+/* Default chord color: orange (Verse, Chorus, Hook, …) */
+.chord-sheet-container .chord-only-line,
+.chord-sheet-container .sheet-standalone-line.sheet-chord,
+.chord-sheet-container .chord-lyric-pair .chord-only-line,
+#song-sheet-content .chord-only-line,
+#song-sheet-content .sheet-standalone-line.sheet-chord,
+#song-sheet-content .chord-lyric-pair .chord-only-line,
+#admin-preview-content .chord-only-line,
+#admin-preview-content .sheet-standalone-line.sheet-chord,
+#admin-preview-content .chord-lyric-pair .chord-only-line {
+  color: var(--chord-color-default);
+}
+
+/* Chord Only Line */
 .chord-only-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-family: var(--font-display);
-  font-weight: 700;
+  display: block;
+  font-family: inherit;
+  font-weight: 400;
   font-size: 1em;
-  color: var(--chord-color);
-  padding: 2px 0;
-  letter-spacing: 1.5px;
+  color: var(--chord-color-default);
+  padding: 0;
+  margin: 0;
+  min-height: 1.15em;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.lyric-only-line {
+  display: block;
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 1em;
+  color: var(--text-primary);
+  padding: 0;
+  margin: 0;
+  line-height: 1.35;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Standalone single lines (progressions, plain text) */
+.sheet-standalone-line {
+  display: block;
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 1em;
+  padding: 0;
+  margin: 0 0 6px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.sheet-standalone-line.sheet-chord {
+  color: var(--chord-color-default);
+  min-height: 1.15em;
+}
+
+.sheet-standalone-line.sheet-lyric {
+  color: var(--text-primary);
+  line-height: 1.35;
 }
 
 .chord-only-line span {
@@ -828,7 +1003,8 @@ input, button, select, textarea {
   height: calc(100vh - 160px);
 }
 
-.admin-editor-panel, .admin-preview-panel {
+.admin-editor-panel,
+.admin-preview-panel {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 16px;
@@ -836,6 +1012,64 @@ input, button, select, textarea {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.live-preview-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-color);
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.admin-preview-sheet {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: var(--bg-primary);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 90, 31, 0.25);
+  box-shadow: inset 0 0 24px rgba(255, 90, 31, 0.04);
+}
+
+.admin-preview-sheet .chord-sheet-container {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+/* Live Preview: ไม่แสดงสกอร์บาร์บนบรรทัดคอร์ด/เนื้อร้อง */
+#admin-preview-content .chord-sheet-container,
+#admin-preview-content .chord-only-line,
+#admin-preview-content .lyric-only-line,
+#admin-preview-content .sheet-standalone-line,
+#admin-preview-content .chord-lyric-pair,
+.admin-preview-sheet .chord-only-line,
+.admin-preview-sheet .lyric-only-line,
+.admin-preview-sheet .sheet-standalone-line,
+.admin-preview-sheet .chord-lyric-pair {
+  overflow-x: hidden;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#admin-preview-content .chord-sheet-container::-webkit-scrollbar,
+#admin-preview-content .chord-only-line::-webkit-scrollbar,
+#admin-preview-content .lyric-only-line::-webkit-scrollbar,
+#admin-preview-content .sheet-standalone-line::-webkit-scrollbar,
+.admin-preview-sheet .chord-only-line::-webkit-scrollbar,
+.admin-preview-sheet .lyric-only-line::-webkit-scrollbar,
+.admin-preview-sheet .sheet-standalone-line::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .admin-form-scroll {
@@ -888,7 +1122,7 @@ input, button, select, textarea {
   resize: none;
   flex: 1;
   min-height: 200px;
-  font-family: monospace;
+  font-family: var(--font-mono, monospace);
   line-height: 1.5;
   transition: var(--transition-fast);
 }
@@ -1102,23 +1336,40 @@ input, button, select, textarea {
   padding: 16px;
   background-color: #fff;
   border-radius: 12px;
-  width: 180px;
-  height: 180px;
+  width: 280px;
+  height: 280px;
   margin-left: auto;
   margin-right: auto;
 }
 
 #share-qr-canvas {
-  width: 150px;
-  height: 150px;
+  width: 250px;
+  height: 250px;
 }
 
 /* Utilities */
-.text-center { text-align: center; }
-.hidden { display: none !important; }
-.flex-row { display: flex; flex-direction: row; gap: 12px; align-items: center; }
-.m-t-auto { margin-top: auto; }
-.flex-1 { flex: 1; }
+.text-center {
+  text-align: center;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.flex-row {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+}
+
+.m-t-auto {
+  margin-top: auto;
+}
+
+.flex-1 {
+  flex: 1;
+}
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
@@ -1148,9 +1399,11 @@ input, button, select, textarea {
   0% {
     background-color: rgba(255, 90, 31, 0);
   }
+
   20% {
     background-color: rgba(255, 90, 31, 0.08);
   }
+
   100% {
     background-color: rgba(255, 90, 31, 0);
   }
@@ -1163,7 +1416,9 @@ input, button, select, textarea {
     height: auto;
     overflow: visible;
   }
-  .admin-editor-panel, .admin-preview-panel {
+
+  .admin-editor-panel,
+  .admin-preview-panel {
     height: 600px;
   }
 }
@@ -1173,47 +1428,58 @@ input, button, select, textarea {
     height: auto;
     overflow-y: auto;
   }
-  
+
   .app-container {
     height: auto;
     min-height: 100vh;
   }
-  
+
   .app-workspace {
     flex-direction: column;
     overflow: visible;
   }
-  
+
   .app-sidebar {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--border-color);
   }
-  
+
   .hero-controls-bar {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .hero-controls-bar .control-tab {
     border-bottom: 1px solid var(--border-color);
   }
-  
+
   .hero-controls-bar .control-tab:nth-child(even) {
     border-right: none;
   }
-  
+
   .song-hero-card {
     padding: 16px;
   }
-  
+
   .hero-title {
     font-size: 24px;
   }
-  
+
   .chord-sheet-container {
     padding: 16px;
   }
-  
+
+  .song-nav-side {
+    width: 40px;
+    height: 56px;
+    font-size: 22px;
+  }
+
+  .song-nav-close {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
   .search-wrapper {
     width: 160px;
   }
@@ -1323,53 +1589,123 @@ input, button, select, textarea {
   transition: width 0.2s ease-out;
 }
 
-.ocr-preview-textarea {
-  min-height: 120px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  background-color: var(--bg-primary) !important;
-  border-color: var(--border-color) !important;
-  line-height: 1.6;
-}
-
-.ocr-preview-textarea:focus {
-  border-color: var(--accent-color) !important;
-}
-
-/* OCR Mode switcher tabs styling */
-.ocr-mode-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.ocr-tab-btn {
-  padding: 8px 12px;
-  font-family: var(--font-display);
-  font-size: 12px;
+.ocr-scan-btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+  padding: 12px 16px;
   font-weight: 700;
-  border: 1px solid var(--border-color);
-  background-color: var(--bg-primary);
-  color: var(--text-secondary);
-  border-radius: var(--border-radius-sm);
+  background: linear-gradient(135deg, #ff5a1f, #ff7038);
+  border: none;
+  color: #fff;
+  box-shadow: var(--shadow-accent);
+}
+
+.ocr-scan-btn:hover {
+  background: linear-gradient(135deg, #ff7038, #ff8a55);
+  box-shadow: 0 6px 18px rgba(255, 90, 31, 0.45);
+}
+
+.ocr-scan-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ocr-insert-row {
+  margin-top: 12px;
+}
+
+.ocr-insert-btn {
+  width: 100%;
+  font-weight: 600;
+}
+
+/* Sidebar Home Button styling */
+#sidebar-home-btn {
   cursor: pointer;
   transition: var(--transition-fast);
-  text-align: center;
+  border-radius: 8px;
+  margin: 10px;
+  padding: 14px !important;
 }
 
-.ocr-tab-btn:hover {
-  border-color: var(--accent-color);
-  color: var(--text-primary);
-  background-color: var(--bg-card-hover);
+#sidebar-home-btn:hover {
+  background-color: rgba(255, 90, 31, 0.08) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
 
-.ocr-tab-btn.active {
-  background-color: var(--accent-glow) !important;
-  border-color: var(--accent-color) !important;
-  color: var(--accent-color) !important;
-  box-shadow: 0 0 8px var(--accent-glow);
+#sidebar-home-btn.active {
+  background-color: rgba(255, 90, 31, 0.12) !important;
+  border: 1px solid var(--accent-color);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
 
+/* Pulse Blink animation for scan output insertion button */
+@keyframes pulse-blink {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 90, 31, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 90, 31, 0);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 90, 31, 0);
+    transform: scale(1);
+  }
+}
 
+.pulse-blink {
+  animation: pulse-blink 1.5s infinite ease-in-out;
+  border-color: #ff5a1f !important;
+  background: linear-gradient(135deg, #ff5a1f, #ff7038) !important;
+  color: white !important;
+}
 
+/* Intro & Outro — white chords */
+.chord-section-block.section-intro .chord-only-line,
+.chord-section-block.section-intro .sheet-standalone-line.sheet-chord,
+.chord-section-block.section-intro .chord-lyric-pair .chord-only-line,
+.chord-section-block.section-outro .chord-only-line,
+.chord-section-block.section-outro .sheet-standalone-line.sheet-chord,
+.chord-section-block.section-outro .chord-lyric-pair .chord-only-line,
+#song-sheet-content .section-intro .chord-only-line,
+#song-sheet-content .section-intro .sheet-standalone-line.sheet-chord,
+#song-sheet-content .section-intro .chord-lyric-pair .chord-only-line,
+#song-sheet-content .section-outro .chord-only-line,
+#song-sheet-content .section-outro .sheet-standalone-line.sheet-chord,
+#song-sheet-content .section-outro .chord-lyric-pair .chord-only-line,
+#admin-preview-content .section-intro .chord-only-line,
+#admin-preview-content .section-intro .sheet-standalone-line.sheet-chord,
+#admin-preview-content .section-intro .chord-lyric-pair .chord-only-line,
+#admin-preview-content .section-outro .chord-only-line,
+#admin-preview-content .section-outro .sheet-standalone-line.sheet-chord,
+#admin-preview-content .section-outro .chord-lyric-pair .chord-only-line {
+  color: var(--chord-color-intro-outro) !important;
+}
+
+/* Instru — yellow chords */
+.chord-section-block.section-instruments .chord-only-line,
+.chord-section-block.section-instruments .sheet-standalone-line.sheet-chord,
+.chord-section-block.section-instruments .chord-lyric-pair .chord-only-line,
+#song-sheet-content .section-instruments .chord-only-line,
+#song-sheet-content .section-instruments .sheet-standalone-line.sheet-chord,
+#song-sheet-content .section-instruments .chord-lyric-pair .chord-only-line,
+#admin-preview-content .section-instruments .chord-only-line,
+#admin-preview-content .section-instruments .sheet-standalone-line.sheet-chord,
+#admin-preview-content .section-instruments .chord-lyric-pair .chord-only-line {
+  color: var(--chord-color-instru) !important;
+}
+
+/* Hide all Tesseract.js default UI elements */
+#tesseract-progress,
+.tesseract-container,
+.tesseract-progress,
+div[class*="tesseract"],
+div[id*="tesseract"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  z-index: -1000 !important;
+}
