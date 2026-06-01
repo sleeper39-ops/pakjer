@@ -136,10 +136,6 @@
                                                                                         class="btn btn-secondary"
                                                                                         style="padding: 6px 12px; font-size: 12px;">📂
                                                                                         จัดลิสต์</button>
-                                                                                <button id="btn-song-delete"
-                                                                                        class="btn btn-danger"
-                                                                                        style="padding: 6px 12px; font-size: 12px;">🗑️
-                                                                                        ลบเพลง</button>
                                                                         </div>
                                                                 </div>
 
@@ -195,7 +191,7 @@
                                                                         <span
                                                                                 style="font-size: 13px; color: var(--text-secondary);">ความเร็วเลื่อนลง:</span>
                                                                         <input type="range" id="autoscroll-slider"
-                                                                                class="speed-slider" min="5" max="80"
+                                                                                class="speed-slider" min="1" max="120"
                                                                                 value="20">
                                                                 </div>
                                                         </div>
@@ -421,14 +417,33 @@
                                                                                                 onclick="insertChordToEditor('Am')">Am</button>
                                                                                         <button class="quick-tool-btn"
                                                                                                 onclick="insertChordToEditor('Bm')">Bm</button>
+
+                                                                                        <span class="quick-tool-break"></span>
+
                                                                                         <button class="quick-tool-btn"
                                                                                                 style="background-color: var(--accent-glow); color: var(--accent-color);"
                                                                                                 onclick="insertChordToEditor('[Intro]')">เพิ่ม
                                                                                                 Intro</button>
                                                                                         <button class="quick-tool-btn"
                                                                                                 style="background-color: var(--accent-glow); color: var(--accent-color);"
+                                                                                                onclick="insertChordToEditor('[Verse]')">เพิ่ม
+                                                                                                Verse</button>
+                                                                                        <button class="quick-tool-btn"
+                                                                                                style="background-color: var(--accent-glow); color: var(--accent-color);"
+                                                                                                onclick="insertChordToEditor('[Pre-Hook]')">เพิ่ม
+                                                                                                Pre-Hook</button>
+                                                                                        <button class="quick-tool-btn"
+                                                                                                style="background-color: var(--accent-glow); color: var(--accent-color);"
                                                                                                 onclick="insertChordToEditor('[Hook]')">เพิ่ม
                                                                                                 Hook</button>
+                                                                                        <button class="quick-tool-btn"
+                                                                                                style="background-color: var(--accent-glow); color: var(--accent-color);"
+                                                                                                onclick="insertChordToEditor('[Instruments]')">เพิ่ม
+                                                                                                Instruments</button>
+                                                                                        <button class="quick-tool-btn"
+                                                                                                style="background-color: var(--accent-glow); color: var(--accent-color);"
+                                                                                                onclick="insertChordToEditor('[Outro]')">เพิ่ม
+                                                                                                Outtro</button>
                                                                                 </div>
 
                                                                                 <textarea id="admin-content"
@@ -446,6 +461,9 @@
                                                                                 บันทึกเพลง</button>
                                                                         <button id="btn-admin-cancel"
                                                                                 class="btn btn-secondary">ยกเลิก</button>
+                                                                        <button id="btn-admin-delete"
+                                                                                class="btn btn-danger"
+                                                                                style="display: none;">🗑️ ลบเพลง</button>
                                                                 </div>
                                                         </div>
 

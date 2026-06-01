@@ -118,7 +118,9 @@ textarea {
   font-size: 22px;
   letter-spacing: 0.5px;
   background: linear-gradient(to right, #fff, #ccc);
+  background-clip: text;
   -webkit-background-clip: text;
+  color: transparent;
   -webkit-text-fill-color: transparent;
 }
 
@@ -371,6 +373,27 @@ textarea {
   font-size: 14px;
   margin-bottom: 0;
   font-weight: 500;
+}
+
+.card-playlists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.card-playlist-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  padding: 3px 10px;
+  border-radius: 999px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card-footer {
@@ -668,6 +691,7 @@ textarea {
 .speed-slider {
   flex: 1;
   -webkit-appearance: none;
+  appearance: none;
   background: var(--bg-input);
   height: 6px;
   border-radius: 3px;
@@ -780,25 +804,27 @@ textarea {
   letter-spacing: 0;
 }
 
-/* หน้าคอร์ดเพลง: บล็อกอยู่กลางกล่องชีต เนื้อหาชิดซ้ายในรูปแบบเดิม */
+/* หน้าคอร์ดเพลง: กล่องชีตอยู่กลาง หน้าเพลงชิดซ้ายในกล่องเดียวกัน */
 #song-sheet-content.chord-sheet-container {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* เลื่อนคอนเทนต์ไปทางขวาเล็กน้อย */
+  padding-left: 90px;
 }
 
 #song-sheet-content .chord-section-block {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   align-self: center;
 }
 
 #song-sheet-content .chord-lyric-pair,
 #song-sheet-content .sheet-standalone-line {
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   align-self: center;
   text-align: left;
@@ -922,7 +948,7 @@ textarea {
   display: block;
   font-family: inherit;
   font-weight: 400;
-  font-size: 1em;
+  font-size: 1.04em;
   color: var(--chord-color-default);
   padding: 0;
   margin: 0;
@@ -935,7 +961,7 @@ textarea {
   display: block;
   font-family: inherit;
   font-weight: 400;
-  font-size: 1em;
+  font-size: 1.04em;
   color: var(--text-primary);
   padding: 0;
   margin: 0;
@@ -959,11 +985,15 @@ textarea {
 .sheet-standalone-line.sheet-chord {
   color: var(--chord-color-default);
   min-height: 1.15em;
+  font-weight: 400;
+  font-size: 1.04em;
 }
 
 .sheet-standalone-line.sheet-lyric {
   color: var(--text-primary);
   line-height: 1.35;
+  font-weight: 400;
+  font-size: 1.04em;
 }
 
 .chord-only-line span {
@@ -1142,6 +1172,12 @@ textarea {
   border-radius: 8px;
   border: 1px solid var(--border-color);
   margin-bottom: 10px;
+}
+
+/* Force next quick-tool button group into a new line */
+.quick-tool-break {
+  flex-basis: 100%;
+  height: 0;
 }
 
 .quick-tool-btn {

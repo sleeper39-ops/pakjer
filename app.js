@@ -2,6 +2,19 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+  const SECTION_NAME_PATTERN =
+    'intro|verse|pre-?hook|hook|chorus|bridge|instru(?:ments?|ment|mental|mentals)?|interlude|solo|outro|outtro|coda|ending|ท่อน|อินโทร|เอาท์โทร|ดนตรี';
+
+  const BRACKET_SECTION_TAG_RE = new RegExp(
+    '^\\[(?:section:\\s*)?(?:' + SECTION_NAME_PATTERN + ')(?:\\s+\\d+)?\\]$',
+    'i'
+  );
+
+  const LEADING_SECTION_TAG_RE = new RegExp(
+    '^(\\[(?:section:\\s*)?(?:' + SECTION_NAME_PATTERN + ')(?:\\s+\\d+)?\\])([\\s\\S]*)$',
+    'i'
+  );
+
   // --- FIREBASE INITIALIZATION ---
   let dbSongs = null;
   let dbPlaylists = null;
@@ -574,11 +587,30 @@ document.addEventListener('DOMContentLoaded', () => {
       end = adminContent.value.length;
     }
 
+    let insertText = chord;
+
+    // Section helper buttons should insert as their own line
+    // so renderer can detect section blocks/colors reliably.
+    const sectionTagRegex = BRACKET_SECTION_TAG_RE;
+    if (sectionTagRegex.test(chord.trim())) {
+      const beforeText = adminContent.value.slice(0, start);
+      const afterText = adminContent.value.slice(end);
+
+      const needsLeadingNewline = beforeText.length > 0 && !beforeText.endsWith('\n');
+      const needsTrailingNewline = afterText.length > 0 && !afterText.startsWith('\n');
+
+      insertText =
+        (needsLeadingNewline ? '\n' : '') +
+        chord.trim() +
+        '\n' +
+        (needsTrailingNewline ? '\n' : '');
+    }
+
     adminContent.focus();
-    adminContent.setRangeText(chord, start, end, 'end');
+    adminContent.setRangeText(insertText, start, end, 'end');
 
     // Place the cursor right after the newly inserted chord
-    adminContent.selectionStart = adminContent.selectionEnd = start + chord.length;
+    adminContent.selectionStart = adminContent.selectionEnd = start + insertText.length;
 
     // Trigger input event to update Live Preview in real-time
     adminContent.dispatchEvent(new Event('input'));
@@ -698,6 +730,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return filteredSongs;
   }
 
+  /** ชื่อลิสต์ทั้งหมดที่มีเพลงนี้อยู่ */
+  function getPlaylistNamesForSong(songId) {
+    return playlists
+      .filter(pl => Array.isArray(pl.songs) && pl.songs.includes(songId))
+      .map(pl => pl.name)
+      .filter(Boolean);
+  }
+
   function getSongNavigationList() {
     const filtered = getFilteredSongs();
     if (currentSongId && filtered.some(s => s.id === currentSongId)) return filtered;
@@ -792,10 +832,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const card = document.createElement('div');
       card.className = 'song-card';
 
+      const playlistNames = !currentPlaylistId ? getPlaylistNamesForSong(song.id) : [];
+      const playlistsHtml = playlistNames.length > 0
+        ? `<div class="card-playlists" aria-label="อยู่ในลิสต์">${playlistNames
+            .map(name => `<span class="card-playlist-tag">${escapeHtml(name)}</span>`)
+            .join('')}</div>`
+        : '';
+
       card.innerHTML = `
         <div class="song-card-body">
           <div class="card-title">${escapeHtml(song.title)}</div>
           <div class="card-artist">${escapeHtml(song.artist)}</div>
+          ${playlistsHtml}
         </div>
         <div class="card-footer">
           <span class="card-key">${escapeHtml(song.key)}</span>
@@ -819,6 +867,13 @@ document.addEventListener('DOMContentLoaded', () => {
     currentSongId = songId;
     currentKeyOffset = 0; // Reset key transposing
     metronomeBpm = song.tempo; // Set metronome bpm
+
+    // If metronome is currently ON, restart it so BPM matches the newly selected song.
+    // (startMetronome computes intervalMs only when starting)
+    if (isMetronomePlaying) {
+      stopMetronome();
+      startMetronome();
+    }
 
     // Fill Hero Card Metadata
     songTitle.textContent = `${song.title} : ${song.artist}`;
@@ -871,8 +926,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const trimmed = line.trim();
     if (!trimmed) return false;
 
+    if (/^\[section:/i.test(trimmed)) return true;
+    if (BRACKET_SECTION_TAG_RE.test(trimmed)) return true;
+
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      if (trimmed.startsWith('[section:')) return true;
       const inner = trimmed.slice(1, -1).trim();
       if (inner.includes('[') || inner.includes(']')) return false;
       const chordRegex = /^[A-G][#b]?(?:m|maj|dim|aug|sus|add|7|9|11|13)*(?:\/[A-G][#b]?)?$/i;
@@ -883,16 +940,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function isPlainSectionHeaderLine(trimmed) {
+    if (/^(ดนตรี|ท่อน|อินโทร|เอาท์โทร)(?:\s*[\d.:|\-]*)?$/i.test(trimmed)) return true;
     if (trimmed.length > 48 || /[ก-๙]/.test(trimmed)) return false;
     if (/[|]/.test(trimmed) && /[A-G][#b]?/i.test(trimmed)) return false;
-    const sectionLabel = /^(intro|outro|outtro|instru|instruments?|instrumental|interlude|verse|chorus|hook|bridge|pre-?chorus|solo|coda|ending|ท่อน|อินโทร|เอาท์โทร|ดนตรี)(?:\s*[\d.:|\-]*)?$/i;
+    const sectionLabel = new RegExp(
+      '^(?:' + SECTION_NAME_PATTERN + ')(?:\\s*[\\d.:|\\-]*)?$',
+      'i'
+    );
     return sectionLabel.test(trimmed);
   }
 
   function getSectionName(line) {
     const trimmed = line.trim();
-    if (trimmed.startsWith('[section:')) {
-      return trimmed.substring(9, trimmed.length - 1).trim();
+    const sectionPrefixMatch = trimmed.match(/^\[section:\s*(.+)\]$/i);
+    if (sectionPrefixMatch) {
+      return sectionPrefixMatch[1].trim();
     }
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       return trimmed.slice(1, -1).trim();
@@ -900,16 +962,58 @@ document.addEventListener('DOMContentLoaded', () => {
     return trimmed;
   }
 
+  /** Split "[Instruments] | G |" into header + remaining chord content on the same line. */
+  function splitLineLeadingSectionHeader(line) {
+    const trimmed = line.trim();
+    const match = trimmed.match(LEADING_SECTION_TAG_RE);
+    if (!match) return null;
+
+    const header = match[1].trim();
+    if (!isSectionHeaderLine(header)) return null;
+
+    return {
+      header,
+      rest: match[2].trim()
+    };
+  }
+
   /** Intro/Outro → white, Instru → yellow, else → orange (no class). */
   function applySectionColorClass(sectionBlock, sectionName) {
-    const lower = sectionName.toLowerCase();
-    if (lower.includes('intro') || lower.includes('อินโทร')) {
-      sectionBlock.classList.add('section-intro');
-    } else if (lower.includes('outro') || lower.includes('outtro') || lower.includes('เอาท์โทร') || lower.includes('จบท้าย') || lower.includes('coda') || lower.includes('ending')) {
-      sectionBlock.classList.add('section-outro');
-    } else if (lower.includes('instru') || lower.includes('instrument') || lower.includes('ดนตรี') || lower.includes('interlude')) {
+    const lower = sectionName.toLowerCase().trim();
+    const isInstru =
+      /\b(instru(?:ments?|ment|mental|mentals)?|interlude|solo|instrumental|ดนตรี)\b/i.test(lower) ||
+      /^instru/i.test(lower);
+    const isIntro = /\b(intro|อินโทร)\b/i.test(lower) || /^intro$/i.test(lower);
+    const isOutro =
+      /\b(outro|outtro|coda|ending|เอาท์โทร|จบท้าย)\b/i.test(lower) ||
+      /^outro$/i.test(lower) ||
+      /^outtro$/i.test(lower);
+
+    if (isInstru) {
       sectionBlock.classList.add('section-instruments');
+    } else if (isIntro) {
+      sectionBlock.classList.add('section-intro');
+    } else if (isOutro) {
+      sectionBlock.classList.add('section-outro');
     }
+  }
+
+  function appendSectionHeader(container, sectionsFound, headerLine, lineIndex) {
+    const sectionName = getSectionName(headerLine);
+    const sectionIndex = sectionsFound.length;
+    sectionsFound.push({ name: sectionName, index: sectionIndex, lineIndex });
+
+    const activeSectionBlock = document.createElement('div');
+    activeSectionBlock.className = 'chord-section-block';
+    activeSectionBlock.id = `song-section-${sectionIndex}`;
+    applySectionColorClass(activeSectionBlock, sectionName);
+
+    const sectionHeader = document.createElement('div');
+    sectionHeader.className = 'section-block-header';
+    sectionHeader.textContent = sectionName;
+    activeSectionBlock.appendChild(sectionHeader);
+    container.appendChild(activeSectionBlock);
+    return activeSectionBlock;
   }
 
   function isLineWithLyrics(line) {
@@ -932,6 +1036,38 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSectionMenu(sectionsFound);
   }
 
+  function renderSheetContentLine(parentContainer, line, lineIndex, lines, keyOffset, songKey) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine === '') {
+      parentContainer.appendChild(document.createElement('br'));
+      return lineIndex;
+    }
+
+    // Interleaved OCR pair: chord row directly above lyric row (100% scan fidelity)
+    if (!line.includes('[') && isChordLine(line)) {
+      const nextLine = (lineIndex + 1 < lines.length) ? lines[lineIndex + 1] : null;
+      if (nextLine !== null && nextLine.trim() !== '' &&
+          !isSectionHeaderLine(nextLine.trim()) &&
+          !splitLineLeadingSectionHeader(nextLine.trim()) &&
+          !isChordLine(nextLine) && !nextLine.includes('[')) {
+        appendInterleavedPair(parentContainer, line, nextLine, keyOffset, songKey);
+        return lineIndex + 1;
+      }
+    }
+
+    if (line.includes('[') && line.includes(']')) {
+      const parsed = splitBracketedLine(line);
+      if (parsed.hasChords) {
+        appendBracketedPair(parentContainer, parsed, keyOffset, songKey);
+        return lineIndex;
+      }
+    }
+
+    appendStandaloneLine(parentContainer, line, isChordLine(line), keyOffset, songKey);
+    return lineIndex;
+  }
+
   /**
    * Shared renderer — preserves OCR/interleaved spacing exactly on every view.
    * Interleaved scan (chord row + lyric row) is shown as-is without re-merging.
@@ -945,53 +1081,29 @@ document.addEventListener('DOMContentLoaded', () => {
       const line = lines[lineIndex];
       const trimmedLine = line.trim();
 
+      const splitHeader = splitLineLeadingSectionHeader(trimmedLine);
+      if (splitHeader) {
+        activeSectionBlock = appendSectionHeader(container, sectionsFound, splitHeader.header, lineIndex);
+        if (splitHeader.rest) {
+          lineIndex = renderSheetContentLine(
+            activeSectionBlock,
+            splitHeader.rest,
+            lineIndex,
+            lines,
+            keyOffset,
+            songKey
+          );
+        }
+        continue;
+      }
+
       if (isSectionHeaderLine(trimmedLine)) {
-        const sectionName = getSectionName(trimmedLine);
-        const sectionIndex = sectionsFound.length;
-        sectionsFound.push({ name: sectionName, index: sectionIndex, lineIndex });
-
-        activeSectionBlock = document.createElement('div');
-        activeSectionBlock.className = 'chord-section-block';
-        activeSectionBlock.id = `song-section-${sectionIndex}`;
-
-        applySectionColorClass(activeSectionBlock, sectionName);
-
-        const sectionHeader = document.createElement('div');
-        sectionHeader.className = 'section-block-header';
-        sectionHeader.textContent = sectionName;
-        activeSectionBlock.appendChild(sectionHeader);
-        container.appendChild(activeSectionBlock);
+        activeSectionBlock = appendSectionHeader(container, sectionsFound, trimmedLine, lineIndex);
         continue;
       }
 
       const parentContainer = activeSectionBlock || container;
-
-      if (trimmedLine === '') {
-        parentContainer.appendChild(document.createElement('br'));
-        continue;
-      }
-
-      // Interleaved OCR pair: chord row directly above lyric row (100% scan fidelity)
-      if (!line.includes('[') && isChordLine(line)) {
-        const nextLine = (lineIndex + 1 < lines.length) ? lines[lineIndex + 1] : null;
-        if (nextLine !== null && nextLine.trim() !== '' &&
-            !isSectionHeaderLine(nextLine.trim()) &&
-            !isChordLine(nextLine) && !nextLine.includes('[')) {
-          appendInterleavedPair(parentContainer, line, nextLine, keyOffset, songKey);
-          lineIndex++;
-          continue;
-        }
-      }
-
-      if (line.includes('[') && line.includes(']')) {
-        const parsed = splitBracketedLine(line);
-        if (parsed.hasChords) {
-          appendBracketedPair(parentContainer, parsed, keyOffset, songKey);
-          continue;
-        }
-      }
-
-      appendStandaloneLine(parentContainer, line, isChordLine(line), keyOffset, songKey);
+      lineIndex = renderSheetContentLine(parentContainer, line, lineIndex, lines, keyOffset, songKey);
     }
 
     return sectionsFound;
@@ -1253,6 +1365,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function startAutoscroll() {
+    if (isScrolling) return;
     isScrolling = true;
     btnAutoscroll.classList.add('active');
     btnAutoscroll.querySelector('.btn-label').textContent = 'Stop Autoscroll';
@@ -1270,6 +1383,12 @@ document.addEventListener('DOMContentLoaded', () => {
     btnAutoscroll.querySelector('.btn-label').textContent = 'Autoscroll';
     autoscrollSpeedControl.classList.add('hidden');
     if (scrollFrameId) cancelAnimationFrame(scrollFrameId);
+    scrollFrameId = null;
+  }
+
+  function getMainScrollContainer() {
+    const mainContent = document.querySelector('.app-main-content');
+    return mainContent || document.scrollingElement || document.documentElement;
   }
 
   function scrollStep(timestamp) {
@@ -1278,11 +1397,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const elapsed = timestamp - lastScrollTime;
     lastScrollTime = timestamp;
 
-    const mainContent = document.querySelector('.app-main-content');
+    const mainContent = getMainScrollContainer();
     if (mainContent) {
       // Calculate pixels to scroll based on speed slider value (pixels/second)
-      const scrollAmount = (autoscrollSpeed * elapsed) / 1000;
+      const speedPxPerSec = Math.max(1, Number(autoscrollSpeed) || 1);
+      const scrollAmount = (speedPxPerSec * elapsed) / 1000;
       mainContent.scrollTop += scrollAmount;
+
+      // Auto stop when reaching bottom
+      const maxScrollTop = Math.max(0, mainContent.scrollHeight - mainContent.clientHeight);
+      if (mainContent.scrollTop >= maxScrollTop - 1) {
+        stopAutoscroll();
+        return;
+      }
     }
 
     scrollFrameId = requestAnimationFrame(scrollStep);
@@ -1317,7 +1444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Find section element
         const secElement = document.getElementById(`song-section-${index}`);
         if (secElement) {
-          const scrollContainer = document.querySelector('.app-main-content');
+          const scrollContainer = getMainScrollContainer();
           if (scrollContainer) {
             const containerRect = scrollContainer.getBoundingClientRect();
             const elemRect = secElement.getBoundingClientRect();
@@ -1465,6 +1592,7 @@ document.addEventListener('DOMContentLoaded', () => {
         savePlaylistsToStorage();
         openAddToPlaylistModal(songId); // reload layout
         renderSidebar();
+        renderLibrary();
       };
 
       container.appendChild(row);
@@ -1881,6 +2009,15 @@ Ensure your response is valid JSON. Do NOT include markdown code block wrappers 
 
       if (trimmed === '') {
         output.push(line);
+        continue;
+      }
+
+      const splitHeader = splitLineLeadingSectionHeader(trimmed);
+      if (splitHeader) {
+        output.push(splitHeader.header);
+        if (splitHeader.rest) {
+          output.push(splitHeader.rest);
+        }
         continue;
       }
 
