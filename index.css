@@ -130,6 +130,24 @@ textarea {
   gap: 16px;
 }
 
+@media (max-width: 1024px) {
+  .header-controls {
+    gap: 8px;
+  }
+  
+  .header-controls .btn span {
+    display: none; /* Hide text on buttons to save space on iPad */
+  }
+  
+  .header-controls .btn::after {
+    content: attr(title); /* If title exists, but it doesn't in HTML, so I'll add it in HTML or just use icons */
+  }
+
+  .search-wrapper {
+    width: 200px;
+  }
+}
+
 .search-wrapper {
   position: relative;
   width: 260px;
@@ -468,16 +486,25 @@ textarea {
 .song-nav-side {
   top: 50vh;
   transform: translateY(-50%);
-  width: 48px;
-  height: 72px;
-  border-radius: 14px;
-  font-size: 26px;
+  width: 40px; /* Reduced from 48px */
+  height: 60px; /* Reduced from 72px */
+  border-radius: 10px; /* Reduced from 14px */
+  font-size: 20px; /* Reduced from 26px */
   font-weight: 700;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+}
+
+@media (max-width: 1024px) {
+  .song-nav-side {
+    width: 34px;
+    height: 50px;
+    font-size: 18px;
+    background: rgba(28, 28, 28, 0.7); /* More transparent on iPad */
+  }
 }
 
 .song-nav-prev {
@@ -531,6 +558,17 @@ textarea {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.hero-admin-tools {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 1024px) {
+  .hero-admin-tools .btn span {
+    display: none;
+  }
 }
 
 .hero-title {
@@ -641,6 +679,19 @@ textarea {
   border-radius: 12px;
   padding: 8px 16px;
   margin-top: 10px;
+  gap: 12px;
+  flex-wrap: wrap; /* Allow wrapping on small screens */
+}
+
+@media (max-width: 576px) {
+  .scale-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .scale-label-box {
+    justify-content: space-between;
+  }
 }
 
 .scale-label-box {
@@ -1446,6 +1497,56 @@ textarea {
 }
 
 /* Responsive adjustments */
+@media (max-width: 1100px) {
+  .song-view-container {
+    max-width: 98%;
+    padding: 0 10px;
+  }
+
+  #song-sheet-content.chord-sheet-container {
+    padding-left: 40px; /* ลดลงจาก 90px เพื่อให้พื้นที่บน iPad มากขึ้น */
+    padding-right: 20px;
+  }
+}
+
+@media (max-width: 1024px) {
+  /* ซ่อน Sidebar อัตโนมัติเมื่อแสดงหน้าคอร์ดเพลงบน iPad/Tablet */
+  .app-container.viewing-song .app-sidebar {
+    display: none;
+  }
+
+  .app-container.viewing-song .app-header {
+    justify-content: flex-start;
+    gap: 20px;
+  }
+
+  .app-container.viewing-song .header-controls {
+    flex: 1;
+  }
+
+  .app-container.viewing-song .search-wrapper {
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .hero-controls-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hero-controls-bar .control-tab:nth-child(2) {
+    border-right: none;
+  }
+
+  .hero-controls-bar .control-tab:nth-child(3),
+  .hero-controls-bar .control-tab:nth-child(4) {
+    border-top: 1px solid var(--border-color);
+  }
+
+  .hero-title {
+    font-size: 26px;
+  }
+}
+
 @media (max-width: 992px) {
   .admin-grid-split {
     grid-template-columns: 1fr;
@@ -1481,34 +1582,26 @@ textarea {
     border-bottom: 1px solid var(--border-color);
   }
 
-  .hero-controls-bar {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .hero-controls-bar .control-tab {
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .hero-controls-bar .control-tab:nth-child(even) {
-    border-right: none;
-  }
-
   .song-hero-card {
     padding: 16px;
   }
 
   .hero-title {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .chord-sheet-container {
     padding: 16px;
   }
 
+  #song-sheet-content.chord-sheet-container {
+    padding-left: 16px; /* ชิดซ้ายมากขึ้นสำหรับมือถือ */
+  }
+
   .song-nav-side {
-    width: 40px;
-    height: 56px;
-    font-size: 22px;
+    width: 32px;
+    height: 48px;
+    font-size: 18px;
   }
 
   .song-nav-close {
