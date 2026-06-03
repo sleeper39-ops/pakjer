@@ -268,6 +268,25 @@ textarea {
   padding-left: 9px;
 }
 
+/* Sortable.js Dragging Styles */
+.sortable-ghost {
+  opacity: 0.4;
+  background-color: var(--accent-glow) !important;
+  border: 1px dashed var(--accent-color) !important;
+}
+
+.sortable-chosen {
+  background-color: var(--bg-card-hover) !important;
+  cursor: grabbing !important;
+}
+
+.sortable-drag {
+  opacity: 0.9;
+  background-color: var(--bg-secondary) !important;
+  box-shadow: var(--shadow-lg);
+  cursor: grabbing !important;
+}
+
 .playlist-count {
   font-size: 11px;
   background-color: rgba(255, 255, 255, 0.06);
