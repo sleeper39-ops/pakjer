@@ -82,6 +82,38 @@ document.addEventListener('DOMContentLoaded', () => {
   // Key scales for transposition matching Screenshot 3
   const KEY_SCALES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
+  function getPitchIndex(root) {
+    let index = KEY_SCALES.indexOf(root);
+    if (index === -1) {
+      const sharpFlatAliases = {
+        'C#': 'Db', 'Db': 'C#',
+        'D#': 'Eb', 'Eb': 'D#',
+        'F#': 'Gb', 'Gb': 'F#',
+        'G#': 'Ab', 'Ab': 'G#',
+        'A#': 'Bb', 'Bb': 'A#',
+        'B#': 'C', 'Cb': 'B',
+        'E#': 'F', 'Fb': 'E'
+      };
+      const alias = sharpFlatAliases[root.toUpperCase()];
+      if (alias) {
+        index = KEY_SCALES.indexOf(alias);
+      }
+    }
+    return index;
+  }
+
+  function setAdminKeyValue(keyValue) {
+    if (!adminKey) return;
+    const keyOptionExists = Array.from(adminKey.options).some(opt => opt.value === keyValue);
+    if (!keyOptionExists && keyValue) {
+      const newOpt = document.createElement('option');
+      newOpt.value = keyValue;
+      newOpt.textContent = keyValue;
+      adminKey.appendChild(newOpt);
+    }
+    adminKey.value = keyValue || 'C';
+  }
+
   // --- CORE DOM ELEMENTS ---
   const views = {
     library: document.getElementById('view-library'),
@@ -622,6 +654,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (viewName !== 'song') {
       stopAutoscroll();
       stopMetronome();
+      document.querySelector('.app-container').classList.remove('viewing-song');
+    } else {
+      document.querySelector('.app-container').classList.add('viewing-song');
     }
 
     // Toggle active view elements
@@ -1176,25 +1211,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modifier = match[2];
 
     // Find current pitch value (index 0 - 11)
-    let pitchIndex = KEY_SCALES.indexOf(root);
-
-    // Handle cases where sharp notes might be represented as flats or vice versa
-    if (pitchIndex === -1) {
-      // mapping aliases
-      const sharpFlatAliases = {
-        'C#': 'Db', 'Db': 'C#',
-        'D#': 'Eb', 'Eb': 'D#',
-        'F#': 'Gb', 'Gb': 'F#',
-        'G#': 'Ab', 'Ab': 'G#',
-        'A#': 'Bb', 'Bb': 'A#',
-        'B#': 'C', 'Cb': 'B',
-        'E#': 'F', 'Fb': 'E'
-      };
-      const alias = sharpFlatAliases[root];
-      if (alias) {
-        pitchIndex = KEY_SCALES.indexOf(alias);
-      }
-    }
+    let pitchIndex = getPitchIndex(root);
 
     if (pitchIndex === -1) return chord; // Fallback if still unrecognized
 
@@ -1322,7 +1339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const match = song.key.match(/^([A-G][#b]?)(.*)$/);
     const root = match ? match[1] : 'C';
     const modifier = match ? match[2] : '';
-    const originalIndex = KEY_SCALES.indexOf(root);
+    const originalIndex = getPitchIndex(root);
 
     // Create 12 buttons inside transpose grid
     KEY_SCALES.forEach(key => {
@@ -1736,7 +1753,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Populate Admin editor fields with these extracted values!
       adminTitle.value = title;
       adminArtist.value = artist;
-      adminKey.value = "C"; // standard default
+      setAdminKeyValue("C");
       adminTempo.value = 90;
       adminContent.value = bracketedContent;
 
@@ -1972,14 +1989,7 @@ Ensure your response is valid JSON. Do NOT include markdown code block wrappers 
     adminContent.value = normalizeOcrContentForDisplay(text);
     
     if (ocrDetectedKey) {
-      const keyOptionExists = Array.from(adminKey.options).some(opt => opt.value === ocrDetectedKey);
-      if (!keyOptionExists) {
-        const newOpt = document.createElement('option');
-        newOpt.value = ocrDetectedKey;
-        newOpt.textContent = ocrDetectedKey;
-        adminKey.appendChild(newOpt);
-      }
-      adminKey.value = ocrDetectedKey;
+      setAdminKeyValue(ocrDetectedKey);
     }
 
     if (ocrDetectedBpm) {
@@ -2187,7 +2197,7 @@ Ensure your response is valid JSON. Do NOT include markdown code block wrappers 
 
     adminTitle.value = '';
     adminArtist.value = '';
-    adminKey.value = 'C';
+    setAdminKeyValue('C');
     adminTempo.value = '90';
     adminContent.value = '';
 
@@ -2216,7 +2226,8 @@ Ensure your response is valid JSON. Do NOT include markdown code block wrappers 
 
     adminTitle.value = song.title || '';
     adminArtist.value = song.artist || '';
-    adminKey.value = song.key || 'C';
+    setAdminKeyValue(song.key);
+    adminTempo.value = song.tempo || 90;
     adminContent.value = song.content || '';
 
     if (adminImageUpload) adminImageUpload.value = '';
@@ -2527,7 +2538,7 @@ Ensure your response is valid JSON. Do NOT include markdown code block wrappers 
     const match = song.key.match(/^([A-G][#b]?)(.*)$/);
     const root = match ? match[1] : 'C';
     const modifier = match ? match[2] : '';
-    const originalIndex = KEY_SCALES.indexOf(root);
+    const originalIndex = getPitchIndex(root);
 
     let targetIndex = (originalIndex + currentKeyOffset) % 12;
     if (targetIndex < 0) targetIndex += 12;
