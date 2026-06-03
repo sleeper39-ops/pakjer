@@ -192,10 +192,42 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnTagManagerAdd = document.getElementById('btn-tag-manager-add');
   const tagManagerList = document.getElementById('tag-manager-list');
 
+  // Initialize Drag & Drop for Playlists
+  function initSortable() {
+    if (typeof Sortable === 'undefined' || !playlistList) return;
+
+    Sortable.create(playlistList, {
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      dragClass: 'sortable-drag',
+      delay: 500, // 0.5s long press to start dragging (supports iPad/Touch)
+      delayOnTouchOnly: true,
+      touchStartThreshold: 5,
+      onEnd: function (evt) {
+        // Reorder playlists array based on new DOM order
+        const newOrderIds = Array.from(playlistList.querySelectorAll('.playlist-item'))
+          .map(li => li.getAttribute('data-id'));
+        
+        const reorderedPlaylists = [];
+        newOrderIds.forEach(id => {
+          const pl = playlists.find(p => p.id === id);
+          if (pl) reorderedPlaylists.push(pl);
+        });
+
+        // Update state and save
+        playlists = reorderedPlaylists;
+        savePlaylistsToStorage();
+        console.log('Playlist reordered and saved.');
+      }
+    });
+  }
+
   // --- INITIALIZATION ---
   function init() {
     loadDatabaseLocal(); // Load from localStorage first for instant display
     bindEvents();
+    initSortable();
 
     // Load stored Gemini key
     const savedGeminiKey = localStorage.getItem('pakjer_gemini_key');
@@ -688,6 +720,7 @@ document.addEventListener('DOMContentLoaded', () => {
     playlists.forEach(pl => {
       const li = document.createElement('li');
       li.className = `playlist-item ${currentPlaylistId === pl.id ? 'active' : ''}`;
+      li.setAttribute('data-id', pl.id); // Add data-id for Sortable reordering
       li.innerHTML = `
         <span>📂 ${escapeHtml(pl.name)}</span>
         <span class="playlist-count">${(pl.songs || []).length}</span>
