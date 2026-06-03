@@ -148,17 +148,18 @@ textarea {
    }
 
    .header-controls .btn span {
-     display: none; /* Hide text on buttons to save space on iPad */
-   }
-   
-   .search-wrapper {
-     width: 180px; /* ลดขนาดลงเล็กน้อยเพื่อให้พอดีในแนวตั้ง */
-     transition: width 0.3s ease;
-   }
+      display: inline-block; /* แสดงตัวอักษรบน iPad ตามคำขอ */
+      font-size: 12px;
+    }
+    
+    .search-wrapper {
+      width: 140px; /* ลดขนาดช่องค้นหาลงอีกเพื่อเพิ่มที่ว่างให้ปุ่ม */
+      transition: width 0.3s ease;
+    }
 
-   .search-wrapper:focus-within {
-     width: 240px;
-   }
+    .search-wrapper:focus-within {
+      width: 200px;
+    }
  }
 
 .search-wrapper {
@@ -1559,7 +1560,7 @@ textarea {
 
   .app-container.viewing-song .search-wrapper {
     width: 100%;
-    max-width: 300px; /* ลดลงจาก 400px เพื่อให้มีพื้นที่เหลือบน iPad แนวตั้ง */
+    max-width: 200px; /* ลดลงอีกเพื่อให้ปุ่มในแนวตั้งแสดงตัวอักษรได้ครบ */
   }
 
   .song-view-container {
