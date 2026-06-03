@@ -1548,6 +1548,52 @@ textarea {
     max-width: 400px;
   }
 
+  .song-view-container {
+    max-width: 95%; /* ขยายให้กว้างขึ้นบน iPad */
+  }
+
+  .hero-controls-bar {
+    grid-template-columns: repeat(4, 1fr); /* กลับมาใช้ 4 คอลัมน์เพราะซ่อน sidebar แล้วมีพื้นที่พอ */
+  }
+
+  .hero-controls-bar .control-tab:nth-child(2) {
+    border-right: 1px solid var(--border-color);
+  }
+
+  .hero-controls-bar .control-tab:nth-child(3),
+  .hero-controls-bar .control-tab:nth-child(4) {
+    border-top: none;
+  }
+
+  .hero-title {
+    font-size: 28px; /* ปรับขนาดให้ใหญ่ขึ้นเล็กน้อยเพื่อให้ดูเต็มหน้าจอ iPad */
+    line-height: 1.2;
+  }
+
+  .hero-meta-row {
+    margin-bottom: 12px;
+  }
+
+  .song-hero-card {
+    padding: 20px;
+    margin-bottom: 10px;
+  }
+
+  .hero-admin-tools .btn span {
+    display: inline-block; /* แสดงข้อความปุ่มในหน้าดูเพลงเพราะมีพื้นที่พอ */
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-title-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .hero-title {
+    font-size: 24px;
+  }
+
   .hero-controls-bar {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1561,8 +1607,8 @@ textarea {
     border-top: 1px solid var(--border-color);
   }
 
-  .hero-title {
-    font-size: 26px;
+  .hero-admin-tools .btn span {
+    display: none;
   }
 }
 
