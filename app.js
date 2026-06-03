@@ -795,6 +795,9 @@ document.addEventListener('DOMContentLoaded', () => {
       );
     }
 
+    // เรียงลำดับเพลงตามความเร็ว (Tempo) จากน้อยไปมาก
+    filteredSongs.sort((a, b) => (a.tempo || 0) - (b.tempo || 0));
+
     return filteredSongs;
   }
 
