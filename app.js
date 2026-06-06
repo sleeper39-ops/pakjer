@@ -389,13 +389,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function pushAllPlaylistsToFirebase() {
     if (!firebaseActive || !dbPlaylists) return;
     try {
-      const plObj = {};
-      playlists.forEach(pl => {
-        if (pl && pl.id) {
-          plObj[pl.id] = pl;
-        }
-      });
-      dbPlaylists.set(plObj).catch(err => console.warn('Firebase playlists push failed:', err));
+      // บันทึกเป็น Array เพื่อรักษาลำดับการจัดเรียง (Sorting order)
+      dbPlaylists.set(playlists).catch(err => console.warn('Firebase playlists push failed:', err));
     } catch (e) {
       console.warn('Error pushing playlists to Firebase:', e);
     }
